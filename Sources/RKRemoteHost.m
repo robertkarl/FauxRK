@@ -280,7 +280,7 @@ static NSString *installCommand(NSData *binary) {
         [_state broadcast];
     }
     if (!value && !pending.error && _failure) _lossReported = YES;
-    BOOL uncertain = !value && !pending.error && pending.submitted && !snapshot && ![op isEqual:@"preview"] && ![op isEqual:@"attach"];
+    BOOL uncertain = !value && !pending.error && pending.submitted && !snapshot && ![op isEqual:@"preview"] && ![op isEqual:@"attach"] && ![op isEqual:@"read"];
     [_pending removeObjectForKey:identifier];
     [_state unlock];
     if (timedOutTask.running) [timedOutTask terminate];

@@ -96,7 +96,7 @@ static void RemoteCatchUp(NSUserDefaults *defaults) {
     Check(center.posts.count == 1, @"Reconnect backlog produces exactly one notification");
     UNNotificationRequest *summary = center.posts.lastObject;
     Check([summary.identifier isEqual:@"RKCatchUp.Debra"], @"Summary uses the catch-up identifier");
-    Check([summary.content.body isEqual:@"2 decisions and 1 result waiting"], @"Summary counts eligible requests, excluding the focused pane");
+    Check([summary.content.body isEqual:@"3 agents need your attention"], @"Summary counts eligible requests, excluding the focused pane");
     [center finishAdd:@"RKCatchUp.Debra"];
     Check([center.delivered containsObject:@"RKCatchUp.Debra"], @"Summary remains while backlog is live");
     [alerts updatePanes:panes attention:rows];

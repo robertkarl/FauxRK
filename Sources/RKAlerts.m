@@ -134,12 +134,10 @@ NSString *const RKAlertsDebra = @"Debra";
 - (BOOL)catchUpPanes:(NSArray<NSDictionary *> *)waiting attention:(NSDictionary *)rows {
     if (self.postingSummary) return NO;
     NSMutableDictionary *backlog = [NSMutableDictionary dictionary];
-    NSUInteger decisions = 0, results = 0;
     for (NSDictionary *pane in waiting) {
         NSDictionary *row = rows[pane[@"id"]];
         if (![self eligible:pane identity:pane[@"rkID"] fingerprint:row[@"fingerprint"]]) continue;
         backlog[pane[@"rkID"]] = row[@"fingerprint"];
-        if ([row[@"kind"] isEqual:@"complete"]) results++; else decisions++;
     }
     if (backlog.count && !self.resolved) return NO;
     if (!backlog.count || !self.authorized) return YES;
@@ -149,12 +147,10 @@ NSString *const RKAlertsDebra = @"Debra";
         [self saveDelivered];
         return YES;
     }
-    NSMutableArray *parts = [NSMutableArray array];
-    if (decisions) [parts addObject:[NSString stringWithFormat:@"%lu %@", (unsigned long)decisions, decisions == 1 ? @"decision" : @"decisions"]];
-    if (results) [parts addObject:[NSString stringWithFormat:@"%lu %@", (unsigned long)results, results == 1 ? @"result" : @"results"]];
     UNMutableNotificationContent *content = [UNMutableNotificationContent new];
     content.title = [NSString stringWithFormat:@"Reconnected to %@", self.computer];
-    content.body = [[parts componentsJoinedByString:@" and "] stringByAppendingString:@" waiting"];
+    content.body = backlog.count == 1 ? @"1 agent needs your attention" :
+        [NSString stringWithFormat:@"%lu agents need your attention", (unsigned long)backlog.count];
     content.userInfo = @{@"catchUp":@YES, @"computer":self.computer};
     self.postingSummary = YES;
     NSUInteger cycle = self.catchUpCycle;
