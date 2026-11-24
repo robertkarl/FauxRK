@@ -47,3 +47,5 @@ Start with a narrow resizable sidebar, ordinary window level by default, and opt
 - Remote Spawn offers exactly three directories on Debra: `~/Code/regina/`, `~/homelab/`, and `~/Code/unbiasedbob-private/`.
 - If SSH drops, keep the last-known cards visible with a disconnected indicator and time last seen. Preserve drafts and disable sending until connected. If a send was in flight, mark delivery unconfirmed and leave resending to the user.
 - Reconnect automatically and refresh current pane state. Sharing read receipts across separate app instances is deferred.
+- One macOS catch-up notification covers outstanding decisions and results after reconnect. Live requests then notify individually.
+- Deliberately switching computers discards drafts. A dropped connection to the same computer preserves them.
