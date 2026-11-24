@@ -24,6 +24,7 @@ RK is a first-class place to talk to agents. The intended desk has RK at the lef
 
 ## Helpers and attention
 
+- Hosted RK helper calls use the interactive claudesonnet alias in a new tmux window on the main server, so the user can see them.
 - The app can run cheap helpers using hosted Sonnet or Luna, or local inference. Design for short time to first token (roughly one second). Hosted checks may read captured screenfuls automatically. Uncaptured panes are summarized on explicit Preview.
 - Blocker detection is a core feature. Aim to surface visible requests within five seconds, including ones already waiting on reconnect. Favor surfacing uncertain requests over overlooking a blocked agent.
 - Offer actual terminal choices as clickable actions and verify the prompt before sending. Helper-written answers to open questions are editable suggestions.
