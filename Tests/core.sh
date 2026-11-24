@@ -66,6 +66,33 @@ test "$(tm display-message -p -t "$other" '#{@rk_source_session}')" = 'Project #
 "$scratch/core" capture "$remaining" >/dev/null
 test "$(tm display-message -p -t "$remaining" '#{session_name}')" = 'Project #{pane_id} Ω;'
 test "$(tm display-message -p -t "$other" '#{@rk_source_window}')" = "W:#{session_id}. #' Ω;"
+tm rename-session -t "$other" -- "Renamed by me"
+test "$("$scratch/core" label "$other")" = "Renamed by me"
+
+# Each linked row points at the same pane but can have a different session name.
+shared=$(tm new-session -dP -F '#{pane_id}' -s Zebra -n Shared /bin/cat)
+legacy=$(tm split-window -dP -F '#{pane_id}' -t "$shared" /bin/cat)
+survivor=$(tm split-window -dP -F '#{pane_id}' -t "$shared" /bin/cat)
+alpha=$(tm new-session -dP -F '#{session_id}' -s Alpha /bin/cat)
+zebra=$(tm display-message -p -t "$shared" '#{session_id}')
+tm link-window -s "$zebra:0" -t "$alpha:1"
+"$scratch/core" reject-session "$shared" "$occupied"
+"$scratch/core" qualified "$shared" "$zebra" Zebra >/dev/null
+test "$(tm display-message -p -t "$shared" '#{session_name}')" = 'Zebra-Shared'
+"$scratch/core" capture "$legacy" >/dev/null
+test "$(tm display-message -p -t "$legacy" '#{session_name}')" = 'Alpha-Shared'
+test "$(tm list-panes -t "$alpha:1" -F '#{pane_id}')" = "$survivor"
+test "$(tm list-panes -t "$zebra:0" -F '#{pane_id}')" = "$survivor"
+
+slash=$(tm new-session -dP -F '#{pane_id}' -s 'Q\Code' -n 'W\file' /bin/cat)
+last=$(tm split-window -dP -F '#{pane_id}' -t "$slash" /bin/cat)
+source_name=$(tm display-message -p -t "$last" '#{session_name}')
+source_window=$(tm display-message -p -t "$last" '#{window_name}')
+"$scratch/core" capture "$slash" >/dev/null
+test "$(tm display-message -p -t "$slash" '#{session_name}')" = "$source_name-W\\\\file"
+"$scratch/core" capture "$last" >/dev/null
+test "$(tm display-message -p -t "$last" '#{session_name}')" = "$source_name"
+test "$(tm display-message -p -t "$last" '#{window_name}')" = "$source_window"
 pid=$("$scratch/core" spawn unused)
 for _ in {1..50}; do [ -f "$RK_TEST_WORKSPACE/argv" ] && break; sleep .1; done
 python3 - "$RK_TEST_WORKSPACE/argv" <<'PY'

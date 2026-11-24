@@ -51,12 +51,25 @@ int main(int argc, const char *argv[]) {
             require(![core sendText:@"touch BAD" toPane:before[@"target"] error:&error],@"shell prompt received arbitrary text");
             return 0;
         }
+        if ([mode isEqual:@"label"]) {
+            puts([before[@"capturedLabel"] UTF8String]);
+            return 0;
+        }
+        if ([mode isEqual:@"reject-session"]) {
+            require(![core capture:before[@"target"] sourceSessionID:@(argv[3]) error:&error],@"Captured from an unrelated session");
+            require([row(core,pid)[@"target"] isEqual:before[@"target"]],@"Rejected capture changed the pane");
+            return 0;
+        }
         require(![before[@"managed"] boolValue],@"unexpected automatic capture");
-        require([core capture:before[@"target"] error:&error],error.localizedDescription ?: @"capture failed");
+        BOOL captured = [mode isEqual:@"qualified"]
+            ? [core capture:before[@"target"] sourceSessionID:@(argv[3]) error:&error]
+            : [core capture:before[@"target"] error:&error];
+        require(captured,error.localizedDescription ?: @"capture failed");
         NSDictionary *after = row(core,pid);
         require([after[@"managed"] boolValue] && [after[@"rkID"] length],@"capture marker missing");
         require([before[@"panePID"] isEqual:after[@"panePID"]],@"Capture replaced the live process");
-        require([after[@"capturedLabel"] isEqual:before[@"session"]],@"Capture lost the familiar name");
+        NSString *expectedName = argc >= 5 ? @(argv[4]) : before[@"session"];
+        require([after[@"capturedLabel"] isEqual:expectedName],@"Capture lost the familiar name");
         require([after[@"window"] isEqual:before[@"window"]],@"Capture changed the window name");
         require(![before[@"sessionID"] isEqual:after[@"sessionID"]],@"capture left pane in old session");
         require(![core interrupt:before[@"target"] error:&error],@"pre-capture selection still valid");

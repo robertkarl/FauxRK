@@ -8,6 +8,7 @@
 - (NSArray<NSDictionary *> *)panes:(NSError **)error;
 - (NSString *)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt error:(NSError **)error;
 - (BOOL)capture:(NSString *)paneID error:(NSError **)error;
+- (BOOL)capture:(NSString *)paneID sourceSessionID:(NSString *)sessionID error:(NSError **)error;
 - (BOOL)sendText:(NSString *)text toPane:(NSString *)paneID error:(NSError **)error;
 - (BOOL)sendKey:(NSString *)key toPane:(NSString *)paneID error:(NSError **)error;
 - (BOOL)sendKeys:(NSArray<NSString *> *)keys toPane:(NSString *)target error:(NSError **)error;
