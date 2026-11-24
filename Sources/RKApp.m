@@ -1,17 +1,31 @@
 #import "RKApp.h"
-#import "RKCore.h"
+#import "RKHost.h"
+#import "RKRemoteTerminal.h"
 #import "RKAlerts.h"
 #import "RKSidebar.h"
 #import "RKVoice.h"
 #import "RKPaneOrder.h"
 
+// A route owns exactly one selection and connection lifetime. Work already in flight
+// can finish on its original host, but cannot update a replacement route.
+@interface RKRoute : NSObject
+@property id<RKHost> host;
+@property dispatch_queue_t queue;
+@property (atomic) BOOL retired;
+@end
+@implementation RKRoute
+@end
+
 @interface RKApp () <RKSidebarDelegate>
-@property RKCore *core;
-@property RKMonitor *monitor;
+@property RKRoute *route;
+@property NSString *hostID;
+@property NSString *destination;
+@property BOOL connected;
+@property NSDate *lastSeen;
+@property NSDate *nextRetry;
 @property RKSidebar *sidebar;
 @property RKVoice *voice;
 @property RKAlerts *alerts;
-@property dispatch_queue_t worker;
 @property NSTimer *timer;
 @property id keyMonitor;
 @property BOOL polling;
@@ -29,22 +43,25 @@
 
 @implementation RKApp
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.core = [RKCore new];
-    self.paneOrder = [RKPaneOrder new];
-    self.monitor = [[RKMonitor alloc] initWithCore:self.core];
-    self.worker = dispatch_queue_create("net.robertkarl.RK.agent-control", DISPATCH_QUEUE_SERIAL);
-    self.pendingCaptures = [NSMutableSet set];
-    self.pendingAnswers = [NSMutableSet set];
     self.sidebar = [[RKSidebar alloc] initWithDelegate:self];
     __weak typeof(self) weakSelf = self;
     self.voice = [[RKVoice alloc] initWithStatus:^(NSString *message) { [weakSelf.sidebar showStatus:message]; }];
-    self.alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity) { weakSelf.notificationTarget = identity; [weakSelf.sidebar showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; [weakSelf refresh]; }];
+    self.alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity) {
+        [weakSelf.sidebar showWindow:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        if (identity.length) { weakSelf.notificationTarget = identity; [weakSelf refresh]; }
+        else [weakSelf.sidebar revealAttention];
+    }];
+    [self selectHost:[NSUserDefaults.standardUserDefaults stringForKey:@"FauxRKSelectedHost"] ?: @"local"];
+    NSNotificationCenter *workspace = NSWorkspace.sharedWorkspace.notificationCenter;
+    [workspace addObserver:self selector:@selector(willSleep:) name:NSWorkspaceWillSleepNotification object:nil];
+    [workspace addObserver:self selector:@selector(didWake:) name:NSWorkspaceDidWakeNotification object:nil];
     [self installMenus];
     [self.sidebar showWindow:nil];
     [NSApp activateIgnoringOtherApps:YES];
     NSString *project = [NSUserDefaults.standardUserDefaults volatileDomainForName:NSArgumentDomain][@"RKProject"];
     BOOL isDirectory = NO;
-    if (project.isAbsolutePath && [NSFileManager.defaultManager fileExistsAtPath:project isDirectory:&isDirectory] && isDirectory) {
+    if (![self isRemote] && project.isAbsolutePath && [NSFileManager.defaultManager fileExistsAtPath:project isDirectory:&isDirectory] && isDirectory) {
         [self.sidebar showSpawnInProject:project];
     }
     self.keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent *(NSEvent *e) {
@@ -78,6 +95,8 @@
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
+    [self retireRoute];
     [self.timer invalidate];
     if (self.keyMonitor) [NSEvent removeMonitor:self.keyMonitor];
     [self.voice cancel];
@@ -95,114 +114,211 @@
 
 }
 
+- (BOOL)isRemote { return [self.hostID isEqual:@"debra"]; }
+
+- (void)retireRoute {
+    self.route.retired = YES;
+    if ([self.route.host isKindOfClass:RKRemoteHost.class]) [(RKRemoteHost *)self.route.host disconnect];
+}
+
+- (void)replaceRoute {
+    [self retireRoute];
+    RKRoute *route = [RKRoute new];
+    route.queue = dispatch_queue_create("net.robertkarl.RK.selected-host", DISPATCH_QUEUE_SERIAL);
+    if (self.isRemote) {
+        NSURL *helper = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"Contents/Helpers/fauxrk-helper"];
+        route.host = [[RKRemoteHost alloc] initWithDestination:self.destination helperURL:helper];
+    } else route.host = [RKLocalHost new];
+    self.route = route;
+    self.polling = NO;
+    self.connected = NO;
+    self.launching = NO;
+    self.pendingCaptures = [NSMutableSet set];
+    self.pendingAnswers = [NSMutableSet set];
+    self.previewGeneration++;
+}
+
+- (void)selectHost:(NSString *)hostID {
+    NSString *selection = [hostID isEqual:@"debra"] ? @"debra" : @"local";
+    if ([selection isEqual:self.hostID]) return;
+    self.hostID = selection;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    self.destination = [defaults stringForKey:@"FauxRKDebraDestination"] ?: @"debra";
+    [defaults setObject:selection forKey:@"FauxRKSelectedHost"];
+    [self.voice cancel];
+    self.recordingKeyDown = NO;
+    self.lastSeen = nil;
+    self.nextRetry = nil;
+    self.lastPollError = nil;
+    self.notificationTarget = nil;
+    self.paneOrder = [RKPaneOrder new];
+    self.targets = @{};
+    self.sortRequested = NO;
+    [self replaceRoute];
+    [self.alerts selectComputer:self.isRemote ? RKAlertsDebra : RKAlertsThisMac];
+    [self.sidebar switchToHost:selection];
+    [self refresh];
+}
+
+- (void)retryConnection { self.nextRetry = nil; [self refresh]; }
+
+- (void)willSleep:(NSNotification *)notification {
+    if (!self.isRemote) return;
+    [self replaceRoute];
+    [self.sidebar showDisconnectedLastSeen:self.lastSeen];
+}
+
+- (void)didWake:(NSNotification *)notification { [self retryConnection]; }
+
+- (void)lostConnection:(NSError *)error {
+    [self replaceRoute];
+    self.nextRetry = [NSDate dateWithTimeIntervalSinceNow:3];
+    [self.sidebar showDisconnectedLastSeen:self.lastSeen];
+    NSString *message = error.localizedDescription ?: @"Could not read tmux.";
+    if (![message isEqual:self.lastPollError]) [self.sidebar showStatus:message];
+    self.lastPollError = message;
+}
+
 - (void)refresh {
-    if (self.polling) return;
+    if (self.polling || self.nextRetry.timeIntervalSinceNow > 0) return;
     self.polling = YES;
-    dispatch_async(self.worker, ^{
+    RKRoute *route = self.route;
+    BOOL remote = self.isRemote;
+    dispatch_async(route.queue, ^{
+        if (route.retired) return;
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        NSDictionary *args = remote ? @{@"provider":[defaults stringForKey:@"RKHelperProvider"] ?: @"sonnet",
+                                        @"model":[defaults stringForKey:@"RKLocalModel"] ?: @"qwen3:4b",
+                                        @"focusToken":[RKRemoteTerminal focusedToken] ?: @""} : @{};
         NSError *error = nil;
-        NSArray *panes = [self.core panes:&error];
-        NSDictionary *attention = panes ? [self.monitor update:panes] : nil;
+        NSDictionary *snapshot = [route.host request:@"snapshot" arguments:args error:&error];
+        if (!snapshot) route.retired = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (route != self.route) return;
             self.polling = NO;
-            if (!panes) {
-                NSString *reason = error.localizedDescription ?: @"Could not read tmux.";
-                if (![reason isEqual:self.lastPollError]) [self.sidebar showStatus:reason];
-                self.lastPollError = reason;
-                return;
-            }
-            self.lastPollError = nil;
-            NSMutableDictionary *targets = [NSMutableDictionary dictionary];
-            for (NSDictionary *pane in panes) targets[pane[@"id"]] = pane[@"target"] ?: pane[@"id"];
-            self.targets = targets;
-            [self.sidebar displayPanes:[self.paneOrder arrange:panes resort:self.sortRequested] attention:attention];
-            self.sortRequested = NO;
-            if (self.notificationTarget) {
-                for (NSDictionary *pane in panes) {
-                    if ([pane[@"rkID"] isEqual:self.notificationTarget]) [self openAttention:pane[@"id"]];
-                }
-                self.notificationTarget = nil;
-            }
-            [self.alerts updatePanes:panes attention:attention];
+            if (!snapshot) { [self lostConnection:error]; return; }
+            [self displaySnapshot:snapshot];
         });
     });
 }
 
+- (void)displaySnapshot:(NSDictionary *)snapshot {
+    NSArray *panes = snapshot[@"panes"];
+    NSDictionary *attention = snapshot[@"attention"];
+    if (!self.connected && self.isRemote) [self.alerts beginCatchUp];
+    self.connected = YES;
+    self.lastSeen = [NSDate date];
+    self.lastPollError = nil;
+    NSMutableDictionary *targets = [NSMutableDictionary dictionary];
+    for (NSDictionary *pane in panes) targets[pane[@"id"]] = pane[@"target"];
+    self.targets = targets;
+    [self.sidebar displayPanes:[self.paneOrder arrange:panes resort:self.sortRequested] attention:attention];
+    self.sortRequested = NO;
+    if (self.notificationTarget) {
+        for (NSDictionary *pane in panes) if ([pane[@"rkID"] isEqual:self.notificationTarget]) [self openAttention:pane[@"id"]];
+        self.notificationTarget = nil;
+    }
+    [self.alerts updatePanes:panes attention:attention];
+}
+
 - (void)sortPanesByActivity { self.sortRequested = YES; [self refresh]; }
 
-- (void)perform:(BOOL (^)(NSError **error))operation then:(void (^)(BOOL))finished {
-    dispatch_async(self.worker, ^{
+- (void)perform:(NSString *)operation arguments:(NSDictionary *)args then:(void (^)(id))finished {
+    RKRoute *route = self.route;
+    if (!self.connected || route.retired) return;
+    dispatch_async(route.queue, ^{
+        if (route.retired) return;
         NSError *error = nil;
-        BOOL ok = operation(&error);
+        id result = [route.host request:operation arguments:args error:&error];
+        BOOL lost = [error.domain isEqual:RKTransportErrorDomain];
+        if (lost) route.retired = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (!ok) [self.sidebar showStatus:error.localizedDescription ?: @"The operation did not complete."];
-            if (finished) finished(ok);
+            if (self.route != route) return;
+            if (lost) { [self lostConnection:error]; return; }
+            if (!result) [self.sidebar showStatus:error.localizedDescription ?: @"The operation did not complete."];
+            if (finished) finished(result);
             [self refresh];
         });
     });
 }
 
 - (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt {
-    if (self.launching) return;
+    if (self.launching || !self.connected) return;
     self.launching = YES;
-    [self perform:^BOOL(NSError **error) { return [self.core spawnPreset:preset directory:directory.stringByExpandingTildeInPath prompt:prompt error:error] != nil; }
-            then:^(BOOL ok) { self.launching = NO; if (ok) [self.sidebar didSpawnWithPrompt:prompt]; }];
+    [self perform:@"spawn" arguments:@{@"preset":preset, @"directory":directory, @"prompt":prompt ?: @""} then:^(id result) {
+        self.launching = NO;
+        if (result) [self.sidebar didSpawnWithPrompt:prompt];
+    }];
 }
+
 - (void)capturePane:(NSString *)paneID {
-    if ([self.pendingCaptures containsObject:paneID]) return;
     NSString *target = self.targets[paneID];
-    if (!target) return;
-    [self.pendingCaptures addObject:paneID];
-    [self perform:^BOOL(NSError **error) { return [self.core capture:target error:error]; }
-            then:^(BOOL ok) { [self.pendingCaptures removeObject:paneID]; }];
+    if (!target || [self.pendingCaptures containsObject:target]) return;
+    [self.pendingCaptures addObject:target];
+    [self perform:@"capture" arguments:@{@"target":target} then:^(id result) { [self.pendingCaptures removeObject:target]; }];
 }
+
 - (void)previewPane:(NSString *)paneID {
+    RKRoute *route = self.route;
     NSString *target = self.targets[paneID];
-    if (!target) return;
+    if (!target || !self.connected) return;
     NSUInteger generation = ++self.previewGeneration;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        if (route.retired) return;
         NSError *error = nil;
-        NSString *text = [self.monitor preview:target error:&error];
+        NSString *text = [route.host request:@"preview" arguments:@{@"target":target} error:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
+            if (route != self.route || generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
             if (text) [self.sidebar showPreview:text forPane:paneID];
             else [self.sidebar showStatus:error.localizedDescription ?: @"Preview unavailable."];
         });
     });
 }
+
 - (void)steerPane:(NSString *)paneID text:(NSString *)text {
     NSString *target = self.targets[paneID];
-    if (!target) return;
-    [self perform:^BOOL(NSError **error) { return [self.monitor steer:text toTarget:target error:error]; }
-            then:^(BOOL ok) { if (ok) [self.sidebar didSendText:text forPane:paneID]; }];
+    if (target) [self perform:@"steer" arguments:@{@"target":target, @"text":text} then:^(id result) {
+        if (result && [self.targets[paneID] isEqual:target]) [self.sidebar didSendText:text forPane:paneID];
+    }];
 }
+
 - (void)interruptPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
-    if (!target) return;
-    [self perform:^BOOL(NSError **error) { return [self.core interrupt:target error:error]; } then:nil];
+    if (target) [self perform:@"interrupt" arguments:@{@"target":target} then:nil];
 }
+
 - (void)endPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
-    if (!target) return;
-    [self perform:^BOOL(NSError **error) { return [self.core end:target error:error]; } then:nil];
+    if (target) [self perform:@"end" arguments:@{@"target":target} then:nil];
 }
+
 - (void)openTerminalForPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
     if (!target) return;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSError *error = nil;
-        if (![self.core openWindow:target error:&error]) {
-            dispatch_async(dispatch_get_main_queue(), ^{ [self.sidebar showStatus:error.localizedDescription]; });
-        }
-    });
+    if (!self.isRemote) { [self perform:@"open" arguments:@{@"target":target} then:nil]; return; }
+    RKRoute *route = self.route;
+    NSString *destination = self.destination;
+    [self perform:@"attach" arguments:@{@"target":target} then:^(NSDictionary *metadata) {
+        if (!metadata) return;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            if (route.retired) return;
+            NSError *error = nil;
+            if (![RKRemoteTerminal openAttachment:metadata target:target destination:destination error:&error])
+                dispatch_async(dispatch_get_main_queue(), ^{ if (route == self.route) [self.sidebar showStatus:error.localizedDescription]; });
+        });
+    }];
 }
+
 - (void)readAttentionForPane:(NSString *)paneID fingerprint:(NSString *)fingerprint {
-    [self perform:^BOOL(NSError **error) { [self.monitor markRead:paneID fingerprint:fingerprint]; return YES; } then:nil];
+    [self perform:@"read" arguments:@{@"id":paneID, @"fingerprint":fingerprint} then:nil];
 }
+
 - (void)answerPane:(NSString *)paneID fingerprint:(NSString *)fingerprint choice:(NSDictionary *)choice {
     if ([self.pendingAnswers containsObject:fingerprint]) return;
     [self.pendingAnswers addObject:fingerprint];
-    [self perform:^BOOL(NSError **error) { return [self.monitor answer:choice pane:paneID fingerprint:fingerprint error:error]; }
-            then:^(BOOL ok) { [self.pendingAnswers removeObject:fingerprint]; }];
+    [self perform:@"answer" arguments:@{@"id":paneID, @"fingerprint":fingerprint, @"choice":choice} then:^(id result) {
+        [self.pendingAnswers removeObject:fingerprint];
+    }];
 }
 
 - (NSMenu *)submenu:(NSString *)name on:(NSMenu *)bar {
@@ -214,12 +330,12 @@
 
 - (void)installMenus {
     NSMenu *bar = [NSMenu new];
-    NSMenu *app = [self submenu:@"RK" on:bar];
-    [app addItemWithTitle:@"About RK" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+    NSMenu *app = [self submenu:@"FauxRK" on:bar];
+    [app addItemWithTitle:@"About FauxRK" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
     [[app addItemWithTitle:@"Helper Settings…" action:@selector(settings:) keyEquivalent:@","] setTarget:self];
     [app addItem:NSMenuItem.separatorItem];
-    [app addItemWithTitle:@"Hide RK" action:@selector(hide:) keyEquivalent:@"h"];
-    [app addItemWithTitle:@"Quit RK" action:@selector(terminate:) keyEquivalent:@"q"];
+    [app addItemWithTitle:@"Hide FauxRK" action:@selector(hide:) keyEquivalent:@"h"];
+    [app addItemWithTitle:@"Quit FauxRK" action:@selector(terminate:) keyEquivalent:@"q"];
     NSMenu *file = [self submenu:@"File" on:bar];
     [[file addItemWithTitle:@"Spawn Agent…" action:@selector(newAgent:) keyEquivalent:@"n"] setTarget:self];
     [file addItemWithTitle:@"Close Window" action:@selector(performClose:) keyEquivalent:@"w"];
@@ -237,7 +353,7 @@
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Agent helper";
-    alert.informativeText = @"The helper reads captured panes and explicit previews. Local inference uses Ollama on this Mac.";
+    alert.informativeText = @"The helper reads captured panes and explicit previews. Sonnet and Ollama both run on the selected computer.";
     NSPopUpButton *provider = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 42, 290, 28)];
     [provider addItemsWithTitles:@[@"Hosted · Sonnet", @"Local · Ollama"]];
     [provider selectItemAtIndex:[[defaults stringForKey:@"RKHelperProvider"] isEqual:@"local"] ? 1 : 0];
