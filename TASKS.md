@@ -7,15 +7,13 @@
 - [x] Visible Sonnet helper windows on the main server, local Ollama summaries, and local Whisper transcription into an editable draft.
 - [x] Tested startup and completion parsing against real CLI screens. Detached end-to-end regression covers capture → answer → reopen → steer.
 
-## Release work in progress
-
-- [x] Verify both medium Codex presets can execute a real shell tool. The explicit shared-daemon launch passed for Astra and Luna (6879a0b).
-- [ ] Finish live Claude menu coverage, including choices with multiline descriptions and custom status lines.
-- [ ] Finish Fable code review, resolve actionable findings, and rerun make test and make.
-- [ ] Install ~/Applications/RK.app, open a spawn draft in this repository, push main to robertkarl/RK, and verify the remote commit.
+- [x] Astra Medium and Luna Medium each executed a shell tool through the shared local Codex daemon (6879a0b).
+- [x] Real Fable menu answers and completed turns are recognized. A steer sent during a running shell tool changed the next action before the turn finished.
+- [x] Fable reviewed the plan and code. The release code review passed; findings and verified corrections are in CODE_REVIEW.md.
+- [x] Build, install, and open the RK development project as a spawn draft on the local Mac.
 
 ## First hands-on session
 
 - [ ] With the Mac unlocked, check the system microphone and notification permission prompts, F10 with a physical microphone, and notification delivery while switching between real agent windows.
 
-Continue from git status and this list. Scratch builds, review logs, and smoke-test outputs belong under the ignored build/ directory. The Mac was locked during UI verification; AppKit renders and responder tests ran successfully.
+Continue from git status and this list. Scratch builds, review logs, and smoke-test outputs belong under the ignored build/ directory. The Mac was locked during UI verification. AppKit renders and responder tests passed. The test run also left a trust entry for a disposable Claude workspace in local Claude settings.
