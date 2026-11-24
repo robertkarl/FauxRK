@@ -55,7 +55,7 @@
     _actions = delegate;
     _hostID = @"local";
     _cards = [NSMutableDictionary dictionary];
-    window.title = @"RK";
+    window.title = @"FauxRK";
     window.titlebarAppearsTransparent = YES;
     window.titleVisibility = NSWindowTitleHidden;
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
