@@ -23,7 +23,7 @@ make install
 open ~/Applications/FauxRK.app
 ```
 
-FauxRK uses Objective-C and programmatic AppKit. The build creates a self-contained app bundle for the UI. Agent runtimes, tmux, and inference tools run on the host. For a stable local signing identity across rebuilds, pass your local identity as the Make variable `SIGN_ID` when building.
+FauxRK uses Objective-C and programmatic AppKit. The build creates a self-contained app bundle for the UI. Agent runtimes, tmux, and inference tools run on the host. The build uses an installed Apple Development identity when available and falls back to ad hoc signing. Set `SIGN_ID` to choose a particular identity. Using the same development identity across builds lets macOS remember the app’s permissions.
 
 To open a launch draft for a specific project when starting FauxRK on This Mac, run <code>open ~/Applications/FauxRK.app --args -RKProject "$PWD"</code>.
 
