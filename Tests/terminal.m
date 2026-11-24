@@ -3,6 +3,8 @@
 
 @interface RKRemoteTerminal (Testing)
 + (NSString *)terminalCommandForMetadata:(NSDictionary *)metadata target:(NSString *)target destination:(NSString *)destination ssh:(NSString *)ssh error:(NSError **)error;
++ (NSString *)boundedFocusProbe:(NSString *(^)(void))query;
++ (NSString *)runScript:(NSString *)source arguments:(NSArray *)arguments timeout:(NSTimeInterval)timeout error:(NSError **)error;
 @end
 
 @interface RKCore (Testing)
@@ -87,6 +89,28 @@ static void rejects(id meta, id target, id destination, NSString *why) {
 
 int main(void) {
     @autoreleasepool {
+        dispatch_semaphore_t release = dispatch_semaphore_create(0), returned = dispatch_semaphore_create(0);
+        __block int lookups = 0;
+        NSString *probeToken = NSUUID.UUID.UUIDString;
+        NSString *(^slow)(void) = ^{
+            lookups++;
+            dispatch_semaphore_wait(release,dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC));
+            dispatch_semaphore_signal(returned);
+            return probeToken;
+        };
+        NSTimeInterval began = NSProcessInfo.processInfo.systemUptime;
+        NSCAssert(![RKRemoteTerminal boundedFocusProbe:slow].length,@"A stalled permission check must not report focus");
+        NSCAssert(![RKRemoteTerminal boundedFocusProbe:slow].length,@"A second poll must have a bounded wait");
+        NSCAssert(NSProcessInfo.processInfo.systemUptime-began < 1 && lookups == 1,@"Pollers must share one slow OS probe");
+        dispatch_semaphore_signal(release);
+        dispatch_semaphore_wait(returned,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC));
+        [NSThread sleepForTimeInterval:.03];
+        NSCAssert(![RKRemoteTerminal boundedFocusProbe:^{ return @""; }].length,@"Never reuse stale focus");
+
+        NSError *timedOut;
+        began = NSProcessInfo.processInfo.systemUptime;
+        NSCAssert(![RKRemoteTerminal runScript:@"delay 4" arguments:@[] timeout:.2 error:&timedOut] && timedOut,@"An unresponsive AppleScript must time out");
+        NSCAssert(NSProcessInfo.processInfo.systemUptime-began < 1.5,@"Script timeout must bound the process wait");
         work = NSProcessInfo.processInfo.environment[@"RK_TERMINAL_WORK"];
         RKCore *core = [[RKCore alloc] initWithDesktopFocus:NO];
         NSString *uuidA = NSUUID.UUID.UUIDString.lowercaseString, *uuidB = NSUUID.UUID.UUIDString.lowercaseString;

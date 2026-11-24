@@ -2,6 +2,7 @@
 #import "RKCore.h"
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import <signal.h>
 
 static NSString *const RKITermBundle = @"com.googlecode.iterm2";
 static NSString *const RKTerminalErrorDomain = @"net.robertkarl.FauxRK.Terminal";
@@ -33,28 +34,14 @@ static NSString *RKUUIDToken(NSString *s) {
     return s;
 }
 
-static NSString *RKRun(NSString *binary, NSArray *args, NSError **error) {
-    NSTask *task = [NSTask new];
-    task.executableURL = [NSURL fileURLWithPath:binary];
-    task.arguments = args;
-    NSPipe *output = [NSPipe pipe], *errors = [NSPipe pipe];
-    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
-    task.standardOutput = output;
-    task.standardError = errors;
-    if (![task launchAndReturnError:error]) return nil;
-    __block NSData *diagnostic;
-    dispatch_group_t io = dispatch_group_create();
-    dispatch_group_async(io, dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{ diagnostic = [errors.fileHandleForReading readDataToEndOfFile]; });
-    NSData *data = [output.fileHandleForReading readDataToEndOfFile];
-    [task waitUntilExit];
-    dispatch_group_wait(io, DISPATCH_TIME_FOREVER);
-    if (task.terminationStatus != 0) {
-        NSString *message = [[[NSString alloc] initWithData:diagnostic encoding:NSUTF8StringEncoding] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        RKTerminalFail(error, message.length ? message : @"Could not open iTerm2.");
-        return nil;
-    }
-    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-}
+// One outstanding focus query may wait on macOS Automation, including a
+// preflight that blocks before osascript starts. Snapshot callers share it.
+@interface RKFocusProbe : NSObject
+@property dispatch_group_t finished;
+@property (atomic, copy) NSString *token;
+@end
+@implementation RKFocusProbe
+@end
 
 // Runs on the remote host as: /bin/sh -c GUARD fauxrk TMUX SESSION PANE GENERATION UUID TOKEN.
 // The state check repeats the helper's managed-lifetime validation at attach time. The
@@ -96,6 +83,40 @@ static NSString *const RKLocalLauncher =
 
 @implementation RKRemoteTerminal
 
+// A TCC permission prompt can keep osascript alive beyond AppleScript's
+// own event timeout. Bound the actual process and its output pipes too.
++ (NSString *)runScript:(NSString *)source arguments:(NSArray *)arguments timeout:(NSTimeInterval)timeout error:(NSError **)error {
+    NSTask *task = [NSTask new];
+    task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/osascript"];
+    task.arguments = [@[@"-e",source] arrayByAddingObjectsFromArray:arguments];
+    NSPipe *output = [NSPipe pipe], *errors = [NSPipe pipe];
+    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    task.standardOutput = output;
+    task.standardError = errors;
+    dispatch_group_t work = dispatch_group_create();
+    dispatch_group_enter(work);
+    task.terminationHandler = ^(__unused NSTask *unused) { dispatch_group_leave(work); };
+    if (![task launchAndReturnError:error]) { dispatch_group_leave(work); return nil; }
+    __block NSData *text, *details;
+    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY,0);
+    dispatch_group_async(work,queue,^{ text = [output.fileHandleForReading readDataToEndOfFile]; });
+    dispatch_group_async(work,queue,^{ details = [errors.fileHandleForReading readDataToEndOfFile]; });
+    if (dispatch_group_wait(work,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(timeout*NSEC_PER_SEC)))) {
+        if (task.running) [task terminate];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,500*NSEC_PER_MSEC),queue,^{
+            if (task.running) kill(task.processIdentifier,SIGKILL);
+        });
+        RKTerminalFail(error,@"iTerm2 did not confirm the request before it timed out. Check iTerm2 before trying again.");
+        return nil;
+    }
+    if (task.terminationStatus != 0) {
+        NSString *message = [[[NSString alloc] initWithData:details encoding:NSUTF8StringEncoding] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        RKTerminalFail(error, message.length ? message : @"Could not reach iTerm2.");
+        return nil;
+    }
+    return [[NSString alloc] initWithData:text encoding:NSUTF8StringEncoding] ?: @"";
+}
+
 // The command string handed to iTerm2. Exposed to tests with a substitute ssh.
 + (NSString *)terminalCommandForMetadata:(NSDictionary *)metadata target:(NSString *)target destination:(NSString *)destination ssh:(NSString *)ssh error:(NSError **)error {
     if (![metadata isKindOfClass:NSDictionary.class]) { RKTerminalFail(error, @"The remote host returned invalid attach metadata."); return nil; }
@@ -120,17 +141,40 @@ static NSString *const RKLocalLauncher =
     NSString *command = [self terminalCommandForMetadata:metadata target:target destination:destination ssh:@"/usr/bin/ssh" error:error];
     if (!command) return NO;
     NSString *script = @"on run argv\ntell application id \"com.googlecode.iterm2\"\nactivate\ncreate window with default profile command (item 1 of argv)\nend tell\nend run";
-    return RKRun(@"/usr/bin/osascript", @[@"-e", script, command], error) != nil;
+    return [self runScript:script arguments:@[command] timeout:30 error:error] != nil;
+}
+
+// Always start a fresh observation when possible. A late answer from an
+// earlier snapshot is never reused for notification suppression.
++ (NSString *)boundedFocusProbe:(NSString *(^)(void))query {
+    static RKFocusProbe *inFlight;
+    RKFocusProbe *probe;
+    @synchronized (RKRemoteTerminal.class) {
+        if (!inFlight) {
+            probe = [RKFocusProbe new];
+            probe.finished = dispatch_group_create();
+            dispatch_group_enter(probe.finished);
+            inFlight = probe;
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
+                probe.token = RKUUIDToken(query()) ?: @"";
+                @synchronized (RKRemoteTerminal.class) { inFlight = nil; }
+                dispatch_group_leave(probe.finished);
+            });
+        } else probe = inFlight;
+    }
+    return dispatch_group_wait(probe.finished,dispatch_time(DISPATCH_TIME_NOW,150*NSEC_PER_MSEC)) ? @"" : probe.token;
 }
 
 + (NSString *)focusedToken {
-    if (![NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier isEqual:RKITermBundle]) return @"";
-    // Polling must never put an Apple Events consent dialog on screen.
-    NSAppleEventDescriptor *app = [NSAppleEventDescriptor descriptorWithBundleIdentifier:RKITermBundle];
-    if (AEDeterminePermissionToAutomateTarget(app.aeDesc, typeWildCard, typeWildCard, false) != noErr) return @"";
-    NSString *script = @"with timeout of 1 second\ntell application id \"com.googlecode.iterm2\" to get id of current session of current window\nend timeout";
-    NSString *output = [RKRun(@"/usr/bin/osascript", @[@"-e", script], nil) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    return RKUUIDToken(output) ?: @"";
+    return [self boundedFocusProbe:^NSString *{
+        if (![NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier isEqual:RKITermBundle]) return @"";
+        // Polling must never put an Apple Events consent dialog on screen.
+        NSAppleEventDescriptor *app = [NSAppleEventDescriptor descriptorWithBundleIdentifier:RKITermBundle];
+        if (AEDeterminePermissionToAutomateTarget(app.aeDesc,typeWildCard,typeWildCard,false) != noErr) return @"";
+        NSString *script = @"with timeout of 1 second\ntell application id \"com.googlecode.iterm2\" to get id of current session of current window\nend timeout";
+        NSString *output = [self runScript:script arguments:@[] timeout:2 error:nil];
+        return [output stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    }];
 }
 
 + (NSString *)focusedPaneForToken:(NSString *)token core:(RKCore *)core {
