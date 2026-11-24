@@ -40,6 +40,9 @@ int main(int argc, const char **argv) { @autoreleasepool {
     Check((![m answer:@{@"key":@"y",@"label":@"Injected"} pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL]), "unoffered action accepted");
     Check([m answer:row[@"choices"][1] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL] && [core.sent isEqual:@"n"], "no action sent");
     Check(![m answer:row[@"choices"][0] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL], "double click sent twice");
+    m = [[RKMonitor alloc] initWithCore:(RKCore *)core];
+    row = [m update:panes][@"%1"];
+    Check([row[@"responseSent"] boolValue] && ![m answer:row[@"choices"][0] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL], "reconnect repeated a just-sent answer");
     core.page = @"Which folder should I use?";
     row = [m update:panes][@"%1"];
     NSDictionary *draft = @{@"label":@"Reply", @"text":@"The demo project", @"draft":@YES};

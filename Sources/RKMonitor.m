@@ -134,10 +134,13 @@ static NSString *RKHash(NSString *s) {
     BOOL same = [saved[@"signature"] isEqual:signature];
     if (!same || !event) event = NSUUID.UUID.UUIDString;
     row[@"fingerprint"] = event;
+    if (same && !obs[@"sent"] && [saved[@"sentAt"] isKindOfClass:NSDate.class]) obs[@"sent"] = saved[@"sentAt"];
     if (obs[@"sent"] && -[obs[@"sent"] timeIntervalSinceNow] >= 4) obs[@"sent"] = nil;
     if (obs[@"sent"]) row[@"responseSent"] = @YES;
     BOOL read = same && [saved[@"read"] boolValue] && [row[@"kind"] isEqual:@"complete"];
-    [self saveHandoff:@{@"id":event, @"signature":signature, @"read":@(read)} forID:rkID];
+    NSMutableDictionary *handoff = [@{@"id":event, @"signature":signature, @"read":@(read)} mutableCopy];
+    if (obs[@"sent"]) handoff[@"sentAt"] = obs[@"sent"];
+    [self saveHandoff:handoff forID:rkID];
     obs[@"row"] = [row copy];
     return read ? nil : obs[@"row"];
 }
@@ -198,7 +201,13 @@ static NSString *RKHash(NSString *s) {
         if (listed && choice[@"keys"]) sent = [_core sendKeys:choice[@"keys"] toPane:target error:error];
         else if (listed && choice[@"key"]) sent = [_core sendKey:choice[@"key"] toPane:target error:error];
         else sent = [_core sendText:choice[@"text"] toPane:target error:error];
-        if (sent) obs[@"sent"] = [NSDate date];
+        if (sent) {
+            obs[@"sent"] = [NSDate date];
+            // A fresh SSH helper may see the same prompt before its UI redraws.
+            NSMutableDictionary *saved = [_handoffs[obs[@"rkID"]] mutableCopy];
+            saved[@"sentAt"] = obs[@"sent"];
+            [self saveHandoff:saved forID:obs[@"rkID"]];
+        }
         return sent;
     }
 }
