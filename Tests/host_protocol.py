@@ -132,7 +132,28 @@ assert tmux("display-message", "-p", "-t", pane_id, "#{pane_id}") == pane_id
 host = Host()
 restored = host.run("snapshot")
 assert any(p["rkID"] == owned["rkID"] for p in restored["panes"])
+assert not restored["attention"], "A previously read result resurfaced on reconnect"
 assert host.run("end", target=target)
 assert tmux("display-message", "-p", "-t", sibling, "#{pane_id}") == sibling
+# Foundation expands the remote user's tilde on the host. A fresh test home
+# and fake provider CLIs exercise all supported paths without touching real projects.
+for directory, preset in (("~/Code/regina/", "Astra Medium"), ("~/homelab/", "Fable Medium"), ("~/Code/unbiasedbob-private/", "Luna Medium")):
+    project = Path(os.environ["CFFIXED_USER_HOME"]) / directory[2:]
+    prompt = "show me the pdf\nKeep this literal: $(echo q) 💬"
+    new_id = host.run("spawn", preset=preset, directory=directory, prompt=prompt)
+    deadline = time.monotonic() + 5
+    invocation = project / "invocation.json"
+    while not invocation.exists() and time.monotonic() < deadline:
+        time.sleep(.03)
+    actual = json.loads(invocation.read_text())
+    assert Path(actual["cwd"]).resolve() == project.resolve() and actual["args"][-1] == prompt, actual
+    created = next(p for p in host.run("snapshot")["panes"] if p["id"] == new_id)
+    assert created["managed"] and created["preset"] == preset, created
+    assert host.run("interrupt", target=created["target"])
+    deadline = time.monotonic() + 2
+    while not (project / "interrupted").exists() and time.monotonic() < deadline:
+        time.sleep(.03)
+    assert (project / "interrupted").is_file()
+    assert host.run("end", target=created["target"])
 host.close()
 print("Host protocol passed: typed wire, parallel preview, detached capture, fresh answers, reconnect, attach and guarded end")

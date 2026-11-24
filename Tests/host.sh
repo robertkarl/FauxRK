@@ -7,8 +7,22 @@ export TMPDIR="$scratch"
 export RK_TMUX_SOCKET="$scratch/s"
 export RK_HOST_FIXTURE="$scratch"
 export ZDOTDIR="$scratch"
+export CFFIXED_USER_HOME="$scratch/home"
+mkdir -p "$scratch/bin" "$CFFIXED_USER_HOME/Code/regina" "$CFFIXED_USER_HOME/homelab" "$CFFIXED_USER_HOME/Code/unbiasedbob-private"
+cat > "$scratch/bin/claude" <<'PYTHON'
+#!/usr/bin/env python3
+import json, os, signal, sys, time
+from pathlib import Path
+if sys.argv[1:] == ["app-server","daemon","start"]: sys.exit(0)
+Path("invocation.json").write_text(json.dumps({"cwd":os.getcwd(),"args":sys.argv[1:]}))
+signal.signal(signal.SIGINT, lambda *_: Path("interrupted").touch())
+while True: time.sleep(1)
+PYTHON
+chmod +x "$scratch/bin/claude"
+ln -s claude "$scratch/bin/codex"
 trap 'tmux -S "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
 cat > "$ZDOTDIR/.zshrc" <<'ZSH'
+export PATH="$RK_HOST_FIXTURE/bin:$PATH"
 alias claudesonnet='rk_preview'
 rk_preview() {
   : > "$RK_HOST_FIXTURE/preview-started"
