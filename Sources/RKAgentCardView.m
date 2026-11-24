@@ -39,6 +39,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
 @property (nonatomic) NSTextField *result;
 @property (nonatomic) NSStackView *detail;
 @property (nonatomic) NSStackView *questionBody;
+@property (nonatomic) NSTextField *questionLabel;
 @property (nonatomic) RKPromptView *composer;
 @property (nonatomic) RKPromptView *reply;
 @property (nonatomic, copy) NSDictionary *request;
@@ -133,28 +134,48 @@ static NSTextField *WrappedLabel(CGFloat size) {
     self.result.stringValue = self.latestResult ?: @"";
     self.result.hidden = !self.latestResult.length || (request && ![request[@"kind"] isEqual:@"complete"]);
     if ([self.request isEqual:request] || (!self.request && !request)) return;
-    // Keep the editor, selection, and dictated draft when the helper refines the same request.
-    NSString *draft = ([self.request[@"fingerprint"] isEqual:request[@"fingerprint"]]) ? self.reply.editor.string : nil;
+    BOOL sameQuestion = [self.request[@"fingerprint"] isEqual:request[@"fingerprint"]];
     self.request = request.copy;
-    [self updateQuestionWithDraft:draft];
+    if (sameQuestion && self.reply && [self requestAcceptsDraft]) {
+        [self refreshQuestionText];
+        [self fillSuggestionIfEmpty];
+        return;
+    }
+    [self rebuildQuestion];
 }
 
-- (void)updateQuestionWithDraft:(NSString *)draft {
+- (BOOL)requestAcceptsDraft {
+    return self.request && ![self.request[@"kind"] isEqual:@"complete"]
+        && ![self.request[@"responseSent"] boolValue] && ![self.request[@"choices"] count];
+}
+
+- (void)refreshQuestionText {
+    self.questionLabel.stringValue = [self.request[@"question"] length] ? self.request[@"question"] : (self.request[@"summary"] ?: @"");
+}
+
+- (void)fillSuggestionIfEmpty {
+    if (!self.reply.editor.string.length && [self.request[@"suggestedReply"] length]) {
+        self.reply.editor.string = self.request[@"suggestedReply"];
+        [self.reply.editor didChangeText];
+    }
+}
+
+- (void)rebuildQuestion {
     for (NSView *view in self.questionBody.arrangedSubviews.copy) [view removeFromSuperview];
     self.reply = nil;
     BOOL show = self.request && ![self.request[@"kind"] isEqual:@"complete"];
     self.questionBody.hidden = !show;
     if (!show) return;
-    NSTextField *question = WrappedLabel(13);
-    question.stringValue = [self.request[@"question"] length] ? self.request[@"question"] : (self.request[@"summary"] ?: @"");
-    RKAddFullWidth(self.questionBody, question);
+    self.questionLabel = WrappedLabel(13);
+    [self refreshQuestionText];
+    RKAddFullWidth(self.questionBody, self.questionLabel);
     if ([self.request[@"responseSent"] boolValue]) {
         [self.questionBody addArrangedSubview:RKDetail(@"Response sent · waiting for agent")];
         return;
     }
     NSArray *choices = self.request[@"choices"];
     for (NSDictionary *choice in choices) [self addChoice:choice];
-    if (!choices.count) [self addReplyWithText:draft ?: self.request[@"suggestedReply"]];
+    if (!choices.count) [self addReply];
 }
 
 - (void)addChoice:(NSDictionary *)choice {
@@ -169,16 +190,13 @@ static NSTextField *WrappedLabel(CGFloat size) {
     [button.widthAnchor constraintLessThanOrEqualToAnchor:self.questionBody.widthAnchor].active = YES;
 }
 
-- (void)addReplyWithText:(NSString *)text {
+- (void)addReply {
     __weak typeof(self) weak = self;
     NSString *fingerprint = self.request[@"fingerprint"];
     self.reply = [[RKPromptView alloc] initWithHint:@"Reply to the request…"];
     [self.reply.editor setAccessibilityIdentifier:[@"reply-" stringByAppendingString:self.paneID]];
     RKAddFullWidth(self.questionBody, self.reply);
-    if (text.length) {
-        self.reply.editor.string = text;
-        [self.reply.editor didChangeText];
-    }
+    [self fillSuggestionIfEmpty];
     RKActionButton *send = [RKActionButton title:@"Send reply" symbol:@"paperplane" help:@"Send edited reply to this request" tint:RKTintBlue action:^{
         NSString *reply = weak.reply.editor.string;
         if (![reply stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return;
