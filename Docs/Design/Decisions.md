@@ -35,3 +35,10 @@ RK is a first-class place to talk to agents. The intended desk has RK at the lef
 ## Window behavior
 
 Start with a narrow resizable sidebar, ordinary window level by default, and optional Keep on Top. Revisit the design after living in the app. The five-second latency and agent behavior are product targets that need validation with real sessions.
+
+## FauxRK remote control
+
+- The next version is named FauxRK. Its selected artwork is [Four-Tine Fork Scan Icon.png](../../Assets/Four-Tine%20Fork%20Scan%20Icon.png).
+- Assume one running copy of FauxRK. All cards, actions, and attention items in that copy belong to the selected computer.
+- Remember the selected computer on relaunch. If it is unreachable, show its disconnected state and offer Retry. Keep Spawn bound to the selected host.
+- Forward the user's prompt as entered. With Debra selected, “show me the pdf” goes to the agent in Debra’s tmux pane. The agent uses Debra’s files and applications exactly as it would if the user were typing there.
