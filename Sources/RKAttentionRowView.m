@@ -4,6 +4,8 @@
 @interface RKAttentionDisclosure : NSButton
 @property(nonatomic, copy) dispatch_block_t open;
 @property(nonatomic, strong) NSColor *accent;
+@property(nonatomic, strong) NSTextField *headingLabel;
+@property(nonatomic, strong) NSTextField *detailLabel;
 - (instancetype)initWithPaneTitle:(NSString *)title request:(NSDictionary *)request action:(dispatch_block_t)open;
 @end
 
@@ -13,9 +15,10 @@
     _open = [open copy];
     BOOL input = [request[@"kind"] isEqual:@"input"];
     BOOL complete = [request[@"kind"] isEqual:@"complete"];
-    NSString *status = input ? @"Blocker" : (complete ? @"Results" : @"May need input");
-    NSString *symbol = input ? @"exclamationmark.circle.fill" : (complete ? @"checkmark.bubble" : @"questionmark.circle");
-    _accent = RKTintColor(input ? RKTintRed : (complete ? RKTintViolet : RKTintAmber));
+    BOOL sent = [request[@"responseSent"] boolValue];
+    NSString *status = sent ? @"Response sent" : input ? @"Blocker" : (complete ? @"Results" : @"May need input");
+    NSString *symbol = sent ? @"paperplane.fill" : input ? @"exclamationmark.circle.fill" : (complete ? @"checkmark.bubble" : @"questionmark.circle");
+    _accent = RKTintColor(sent ? RKTintMint : input ? RKTintRed : (complete ? RKTintViolet : RKTintAmber));
     self.bordered = NO;
     self.title = @"";
     self.focusRingType = NSFocusRingTypeExterior;
@@ -30,13 +33,26 @@
     disclosure.contentTintColor = [NSColor colorWithWhite:.84 alpha:1];
 
     NSString *heading = [NSString stringWithFormat:@"%@ — %@", status, title];
-    NSString *detail = request[@"summary"] ?: request[@"question"] ?: @"";
-    NSTextField *name = RKLabel(heading, 14, NSFontWeightSemibold);
-    NSTextField *summary = RKLabel(detail, 12, NSFontWeightRegular);
-    summary.textColor = [NSColor colorWithSRGBRed:.80 green:.83 blue:.89 alpha:1];
-    NSStackView *labels = RKColumn(2);
-    RKAddFullWidth(labels, name);
-    if (detail.length) RKAddFullWidth(labels, summary);
+    NSString *summary = request[@"summary"] ?: @"";
+    NSString *question = request[@"question"] ?: @"";
+    NSString *detail = complete ? summary : (question.length ? question : summary);
+    self.headingLabel = RKLabel(heading, 14, NSFontWeightSemibold);
+    self.detailLabel = RKLabel(detail, 12.5, NSFontWeightRegular);
+    self.detailLabel.textColor = [NSColor colorWithSRGBRed:.83 green:.85 blue:.90 alpha:1];
+    NSStackView *labels = RKColumn(3);
+    for (NSTextField *label in @[self.headingLabel, self.detailLabel]) {
+        label.usesSingleLineMode = NO;
+        label.maximumNumberOfLines = 0;
+        label.lineBreakMode = NSLineBreakByWordWrapping;
+        label.preferredMaxLayoutWidth = 238;
+        [label setContentCompressionResistancePriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationVertical];
+        if (label.stringValue.length) RKAddFullWidth(labels, label);
+    }
+    if (sent) {
+        NSTextField *wait = RKLabel(@"Waiting for the agent to continue", 11.5, NSFontWeightMedium);
+        wait.textColor = _accent;
+        RKAddFullWidth(labels, wait);
+    }
     for (NSView *child in @[icon, labels, disclosure]) {
         child.translatesAutoresizingMaskIntoConstraints = NO;
         [child setAccessibilityElement:NO];
@@ -44,11 +60,12 @@
     }
     [NSLayoutConstraint activateConstraints:@[
         [icon.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:11],
-        [icon.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        [icon.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
         [icon.widthAnchor constraintEqualToConstant:23],
         [icon.heightAnchor constraintEqualToConstant:23],
         [labels.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:8],
-        [labels.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        [labels.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
+        [labels.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-8],
         [labels.trailingAnchor constraintEqualToAnchor:disclosure.leadingAnchor constant:-8],
         [disclosure.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-11],
         [disclosure.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
@@ -60,7 +77,14 @@
     return self;
 }
 
-- (NSSize)intrinsicContentSize { return NSMakeSize(NSViewNoIntrinsicMetric, 49); }
+- (NSSize)intrinsicContentSize { return NSMakeSize(NSViewNoIntrinsicMetric, NSViewNoIntrinsicMetric); }
+- (void)layout {
+    [super layout];
+    for (NSTextField *label in @[self.headingLabel, self.detailLabel]) {
+        CGFloat width = NSWidth(label.bounds);
+        if (width > 10 && fabs(width - label.preferredMaxLayoutWidth) > 1) label.preferredMaxLayoutWidth = width;
+    }
+}
 - (BOOL)acceptsFirstResponder { return YES; }
 - (NSView *)hitTest:(NSPoint)point { return [super hitTest:point] ? self : nil; }
 - (void)reveal:(id)sender { if (self.open) self.open(); }
@@ -77,6 +101,7 @@
 
 
 @interface RKAttentionRowView ()
+@property(nonatomic, copy) NSString *paneTitle;
 @property(nonatomic, strong) NSDictionary *request;
 @property(nonatomic, strong) NSStackView *body;
 @property(nonatomic, strong) NSView *responses;
@@ -86,6 +111,7 @@
 - (instancetype)initWithPaneTitle:(NSString *)title request:(NSDictionary *)request action:(dispatch_block_t)open {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _request = [request copy];
+    _paneTitle = [title copy];
     self.wantsLayer = YES;
     BOOL input = [request[@"kind"] isEqual:@"input"];
     BOOL complete = [request[@"kind"] isEqual:@"complete"];
@@ -105,6 +131,7 @@
         [_body.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
     ]];
     RKAttentionDisclosure *disclosure = [[RKAttentionDisclosure alloc] initWithPaneTitle:title request:request action:open];
+    [disclosure setAccessibilityIdentifier:[NSString stringWithFormat:@"attention-open-%@",request[@"fingerprint"] ?: title]];
     RKAddFullWidth(_body, disclosure);
     return self;
 }
@@ -123,9 +150,17 @@
     for (NSDictionary *choice in choices) {
         NSString *label = choice[@"label"];
         if (!label.length) continue;
-        RKActionButton *button = [RKActionButton title:label symbol:nil help:label tint:RKTintMuted action:^{
+        NSString *normalized = label.lowercaseString;
+        BOOL secondary = [@[@"type something.", @"chat about this", @"back"] containsObject:normalized];
+        NSString *help = [NSString stringWithFormat:@"%@ — %@",label,self.paneTitle];
+        // All substantive answers share an accent. A refusal has the same
+        // weight as approval, and none of these controls is the default button.
+        RKActionButton *button = [RKActionButton title:label symbol:nil help:help tint:secondary ? RKTintMuted : RKTintBlue action:^{
             if (weak.answerChoice) weak.answerChoice(choice);
         }];
+        [button setAccessibilityIdentifier:[NSString stringWithFormat:@"attention-choice-%@-%lu",
+            self.request[@"fingerprint"] ?: self.paneTitle, (unsigned long)buttons.count]];
+        button.keyEquivalent = @"";
         button.lineBreakMode = NSLineBreakByTruncatingTail;
         button.toolTip = label;
         [buttons addObject:button];
