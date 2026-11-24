@@ -38,3 +38,7 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 
 - [x] Verify recognizable names for isolated and shared sessions, literal tmux names, and existing captures.
 - [x] Restore the reported session’s recognizable name, review the change, and deliver the laptop build.
+
+## SSH inventory recovery
+
+- [x] Reproduce the C-locale Unicode inventory error, cover it with a real tmux test, and verify the running laptop dashboard reconnects to Debra using the fixed helper.

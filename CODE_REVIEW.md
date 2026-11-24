@@ -1,9 +1,11 @@
-## Code Review: Preserve captured tmux names
+## Code Review: UTF-8 tmux client output
 
-**Verdict: PASS** for commit `4fe99c1`.
+**Verdict: PASS** for commit `752181a`.
 
 ### Findings
 
-No open findings. I reran the original regression in an isolated tmux 3.5a server. Inventory listed the shared pane under `Alpha` first, while a pane-only lookup still returned `Zebra`. Capture preserved `Alpha` as both the session name and the card label.
+No findings.
 
-`Tests/core.sh` passed. It also exercises explicit selection of a linked session, rejection of an unrelated session, fallback names when siblings remain, literal punctuation and backslashes, and a user rename after capture. I traced the selected session ID from the discovery row through the host request to the move. The sidebar and individual notifications use the captured label.
+In an isolated tmux 3.5a session, a client with `LC_ALL=C` returned `10:unicode-_` for the name `unicode-Ω`. The field contained nine bytes despite its declared length of ten. With `-u`, the same query returned `10:unicode-Ω`, preserving all ten UTF-8 bytes. The shared RKCore launcher applies the flag to both inventory and capture queries.
+
+`Tests/core.sh` passed, including capture of a Unicode session under the C locale.
