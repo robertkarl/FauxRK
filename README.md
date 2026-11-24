@@ -14,7 +14,7 @@ The intended desk has RK on the left and Netflix on the right. You can give an a
 
 ## Build and run
 
-Use macOS 14 or later with the Xcode command-line tools and a local tmux installation. Agent presets use the signed-in Claude Code and Codex CLIs from your interactive zsh environment. Preset names reflect the original workstation’s model access. Each machine needs access to the selected model.
+Use macOS 14 or later with the Xcode command-line tools and a local tmux installation. Agent presets use the signed-in Claude Code and Codex CLIs from your interactive zsh environment. Preset names reflect the original workstation’s model access. Each machine needs access to the selected model. The Codex presets use a CLI with local app-server daemon support.
 
 ```sh
 make
@@ -24,6 +24,8 @@ open ~/Applications/RK.app
 ```
 
 RK uses Objective-C and programmatic AppKit. The build creates a self-contained app bundle for the UI. Agent runtimes, tmux, and inference tools run on the host. For a stable local signing identity across rebuilds, pass your local identity as the Make variable `SIGN_ID` when building.
+
+To open a launch draft for a specific project when starting RK, run <code>open ~/Applications/RK.app --args -RKProject "$PWD"</code>.
 
 ## Helpers and voice
 
@@ -35,4 +37,4 @@ The five-second blocker target includes prompts already waiting when you reopen 
 
 ## Design record
 
-The original mockups and the choices behind the sidebar are in the repository. [Design interview](Docs/Design/Decisions.md) · [Compact dashboard](Docs/Design/Neon%20Agent%20Control%20Dashboard%281%29.png) · [Expanded dashboard](Docs/Design/Expanded%20Agent%20Control%20Dashboard.png) · [Acceptance criteria](SPEC.md)
+The original mockups and the choices behind the sidebar are in the repository. The short task list records what has been verified and what still needs hands-on testing. [Project handoff](TASKS.md). [Design interview](Docs/Design/Decisions.md) · [Compact dashboard](Docs/Design/Neon%20Agent%20Control%20Dashboard%281%29.png) · [Expanded dashboard](Docs/Design/Expanded%20Agent%20Control%20Dashboard.png) · [Acceptance criteria](SPEC.md)

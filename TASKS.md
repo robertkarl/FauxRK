@@ -9,7 +9,8 @@
 
 ## Release work in progress
 
-- [ ] Finish the four-preset live checks. On this Mac, Codex -c alone forces embedded mode and shell tools stall. The explicit shared-daemon launch passed an Astra shell test; verify Luna and commit.
+- [x] Verify both medium Codex presets can execute a real shell tool. The explicit shared-daemon launch passed for Astra and Luna (6879a0b).
+- [ ] Finish live Claude menu coverage, including choices with multiline descriptions and custom status lines.
 - [ ] Finish Fable code review, resolve actionable findings, and rerun make test and make.
 - [ ] Install ~/Applications/RK.app, open a spawn draft in this repository, push main to robertkarl/RK, and verify the remote commit.
 
