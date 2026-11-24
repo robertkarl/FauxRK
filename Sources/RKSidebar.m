@@ -30,6 +30,7 @@
 @property (nonatomic) NSTextField *previewTitle;
 @property (nonatomic) NSTextField *previewText;
 @property (nonatomic, copy) NSString *previewID;
+@property (nonatomic, copy) NSString *previewTarget;
 @property (nonatomic) NSMutableDictionary<NSString *, RKAgentCardView *> *cards;
 @property (nonatomic) NSDictionary<NSString *, NSDictionary *> *paneByID;
 @property (nonatomic) NSDictionary<NSString *, NSDictionary *> *requests;
@@ -185,7 +186,7 @@
     [head addArrangedSubview:RKSpring()];
     __weak typeof(self) weak = self;
     [head addArrangedSubview:[RKActionButton title:@"Capture" symbol:@"plus" help:@"Capture previewed pane" tint:RKTintBlue action:^{
-        if (weak.previewID) [weak.actions capturePane:weak.previewID];
+        if (weak.previewID && [weak.previewTarget isEqual:weak.paneByID[weak.previewID][@"target"]]) [weak.actions capturePane:weak.previewID];
     }]];
     [head addArrangedSubview:[RKActionButton title:@"" symbol:@"xmark" help:@"Close preview" tint:RKTintMuted action:^{
         weak.preview.hidden = YES;
@@ -221,7 +222,7 @@
     self.discovery.hidden = !others.count;
     self.noOther.hidden = others.count > 0;
     [self.discovery displayPanes:others];
-    if (self.previewID && (!index[self.previewID] || [index[self.previewID][@"managed"] boolValue])) {
+    if (self.previewID && (![self.previewTarget isEqual:index[self.previewID][@"target"]] || [index[self.previewID][@"managed"] boolValue])) {
         self.preview.hidden = YES;
         self.previewID = nil;
     }
@@ -320,6 +321,7 @@
 - (void)showPreview:(NSString *)text forPane:(NSString *)paneID {
     if (!self.paneByID[paneID] || [self.paneByID[paneID][@"managed"] boolValue]) return;
     self.previewID = paneID;
+    self.previewTarget = self.paneByID[paneID][@"target"];
     self.previewTitle.stringValue = RKPaneTitle(self.paneByID[paneID]);
     self.previewText.stringValue = text;
     self.preview.hidden = NO;

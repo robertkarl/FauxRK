@@ -198,7 +198,7 @@
 }
 - (void)answerPane:(NSString *)paneID fingerprint:(NSString *)fingerprint choice:(NSDictionary *)choice {
     [self perform:^BOOL(NSError **error) { return [self.monitor answer:choice pane:paneID fingerprint:fingerprint error:error]; }
-            then:^(BOOL ok) { if (ok && choice[@"text"]) [self.sidebar didSendText:choice[@"text"] forPane:paneID]; }];
+            then:nil];
 }
 
 - (NSMenu *)submenu:(NSString *)name on:(NSMenu *)bar {
