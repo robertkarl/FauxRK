@@ -5,7 +5,7 @@ work=$(mktemp -d -t rk-monitor-test)
 # Alias fixtures create their own tmux server, including when running inside the user's tmux.
 export RK_TMUX_SOCKET="rk-monitor-test-$(uuidgen)"
 trap 'tmux -L "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
-xcrun clang -fobjc-arc -framework Cocoa Sources/RKCore.m Sources/RKMonitor.m Tests/monitor.m -o "$work/tests"
+xcrun clang -fobjc-arc -framework Cocoa Sources/RKCore.m Sources/RKPaneScreen.m Sources/RKHelper.m Sources/RKMonitor.m Tests/monitor.m -o "$work/tests"
 "$work/tests"
 
 mkdir "$work/zsh"
