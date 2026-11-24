@@ -60,7 +60,7 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
         if (optional && !value) continue;
         BOOL valid;
         if ([key isEqual:@"choice"]) valid = RKValidChoice(value);
-        else if ([key isEqual:@"prompt"] || [key isEqual:@"focusToken"]) valid = [value isKindOfClass:NSString.class];
+        else if ([key isEqual:@"prompt"] || [key isEqual:@"focusToken"] || [key isEqual:@"model"]) valid = [value isKindOfClass:NSString.class];
         else valid = RKText(value);
         if (!valid) return [NSString stringWithFormat:@"Invalid or missing '%@' for %@.",key,operation];
     }
@@ -102,7 +102,7 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
     NSDictionary *prior = [defaults volatileDomainForName:NSArgumentDomain];
     NSMutableDictionary *domain = [prior mutableCopy] ?: [NSMutableDictionary new];
     if (provider) domain[@"RKHelperProvider"] = provider;
-    if (model) domain[@"RKLocalModel"] = model;
+    if (model) domain[@"RKLocalModel"] = model.length ? model : @"qwen3:4b";
     // Each SSH connection owns a helper process. These overrides disappear
     // on disconnect and do not write the remote user's RK preferences.
     if (![domain isEqual:prior]) [defaults setVolatileDomain:domain forName:NSArgumentDomain];

@@ -1,10 +1,12 @@
 #import <Foundation/Foundation.h>
 #import <errno.h>
 #import <signal.h>
+#import <stdatomic.h>
 #import <unistd.h>
 #import "RKHost.h"
 
 static const NSUInteger RKMaxRequest = 4 * 1024 * 1024;
+static atomic_bool RKOutputClosed;
 
 // stdout is exclusively the JSONL reply stream. Preview jobs may finish in
 // parallel, so serialize the entire frame including its trailing newline.
@@ -18,12 +20,18 @@ static void reply(id requestID, id value, NSString *message) {
     NSMutableData *frame = [json mutableCopy];
     [frame appendBytes:"\n" length:1];
     @synchronized (RKLocalHost.class) {
+        if (atomic_load(&RKOutputClosed)) return;
         const unsigned char *p = frame.bytes;
         size_t left = frame.length;
         while (left) {
             ssize_t count = write(STDOUT_FILENO, p, left);
             if (count < 0 && errno == EINTR) continue;
-            if (count <= 0) _exit(0); // The SSH peer is gone.
+            if (count <= 0) {
+                // A Preview can discover the disconnect while the main thread
+                // is still submitting an answer. Let that operation finish.
+                atomic_store(&RKOutputClosed,true);
+                return;
+            }
             p += count; left -= count;
         }
     }
@@ -75,12 +83,12 @@ int main(int argc, const char *argv[]) {
         NSMutableData *line = [NSMutableData new];
         BOOL oversized = NO;
         unsigned char bytes[16384];
-        for (;;) {
+        while (!atomic_load(&RKOutputClosed)) {
             ssize_t n = read(STDIN_FILENO,bytes,sizeof bytes);
             if (n < 0 && errno == EINTR) continue;
             if (n <= 0) break;
             const unsigned char *p = bytes, *end = bytes+n;
-            while (p < end) {
+            while (p < end && !atomic_load(&RKOutputClosed)) {
                 const unsigned char *newline = memchr(p, '\n', end-p);
                 NSUInteger length = (NSUInteger)((newline ?: end)-p);
                 if (line.length + length > RKMaxRequest) { oversized = YES; line.length = 0; }
