@@ -70,6 +70,82 @@ static void Click(FakeCenter *center, UNNotificationRequest *request) {
     Check(done, @"Notify macOS click was handled");
 }
 
+static NSDictionary *Kind(NSString *fingerprint, NSString *kind) { return @{@"fingerprint":fingerprint, @"summary":@"Proceed?", @"kind":kind}; }
+
+static void RemoteCatchUp(NSUserDefaults *defaults) {
+    FakeCenter *center = [FakeCenter new];
+    __block BOOL front = NO;
+    __block NSString *opened;
+    RKAlerts *alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity){ opened=identity; } center:(id)center
+                                             defaults:defaults foreground:^{ return front; }];
+    [alerts selectComputer:@"Debra"];
+    [alerts beginCatchUp];
+    NSArray *panes = @[Pane(@"%1",@"r-A",YES), Pane(@"%2",@"r-B",NO), Pane(@"%3",@"r-C",NO), Pane(@"%4",@"r-D",NO)];
+    NSDictionary *rows = @{@"%1":Kind(@"a1",@"input"), @"%2":Kind(@"b1",@"input"), @"%3":Kind(@"c1",@"maybe"), @"%4":Kind(@"d1",@"complete")};
+    [alerts updatePanes:panes attention:rows];
+    Check(!center.posts.count, @"Catch-up waits while authorization is pending");
+    Drain();
+    [alerts updatePanes:panes attention:rows];
+    Check(center.posts.count == 1, @"Reconnect backlog produces exactly one notification");
+    UNNotificationRequest *summary = center.posts.lastObject;
+    Check([summary.identifier isEqual:@"RKCatchUp.Debra"], @"Summary uses the catch-up identifier");
+    Check([summary.content.body isEqual:@"2 decisions and 1 result waiting"], @"Summary counts eligible requests, excluding the focused pane");
+    [center finishAdd:@"RKCatchUp.Debra"];
+    Check([center.delivered containsObject:@"RKCatchUp.Debra"], @"Summary remains while backlog is live");
+    [alerts updatePanes:panes attention:rows];
+    [alerts updatePanes:panes attention:rows];
+    Check(center.posts.count == 1, @"Backlog is not repeated individually on later polls");
+    Click(center, summary);
+    Check([opened isEqual:@""], @"Clicking summary opens with empty identity");
+
+    NSMutableDictionary *next = [rows mutableCopy];
+    next[@"%2"] = Kind(@"b2",@"input");
+    [alerts updatePanes:panes attention:next];
+    UNNotificationRequest *live = center.posts.lastObject;
+    Check(center.posts.count == 2 && [live.identifier isEqual:@"Debra:r-B"], @"Live event after catch-up notifies individually");
+    Check([live.content.userInfo[@"computer"] isEqual:@"Debra"], @"Remote banner records its computer");
+    [center finishAdd:@"Debra:r-B"];
+    Click(center, live);
+    Check([opened isEqual:@"r-B"], @"Remote banner click opens its identity");
+    [alerts updatePanes:@[Pane(@"%2",@"r-B",NO)] attention:@{@"%2":Kind(@"b2",@"input")}];
+    Check(![center.delivered containsObject:@"RKCatchUp.Debra"], @"Summary withdrawn once its backlog resolves");
+
+    [alerts beginCatchUp];
+    [alerts updatePanes:@[Pane(@"%2",@"r-B",NO)] attention:@{@"%2":Kind(@"b2",@"input")}];
+    Check(center.posts.count == 2, @"No catch-up notification when nothing is eligible");
+    [alerts updatePanes:panes attention:rows];
+    Check(center.posts.count == 5, @"Catch-up ended; new events post individually");
+    for (NSString *identity in @[@"Debra:r-B",@"Debra:r-C",@"Debra:r-D"]) [center finishAdd:identity];
+
+    front = YES;
+    [alerts beginCatchUp];
+    [alerts updatePanes:panes attention:next];
+    front = NO;
+    [alerts updatePanes:panes attention:next];
+    [alerts updatePanes:panes attention:next];
+    Check(center.posts.count == 5, @"Backlog consumed silently when RK was in front during reconnect");
+
+    [alerts updatePanes:panes attention:@{@"%2":Kind(@"b2",@"input"), @"%3":Kind(@"c3",@"maybe")}];
+    UNNotificationRequest *stale = center.posts.lastObject;
+    Check([stale.identifier isEqual:@"Debra:r-C"], @"Remote event in flight");
+    [alerts selectComputer:@"Debra"];
+    Check(center.adding[@"Debra:r-C"] != nil, @"Reselecting the same computer is a no-op");
+    [alerts selectComputer:@"This Mac"];
+    [center finishAdd:@"Debra:r-C"];
+    Check(!center.delivered.count, @"Switching removes old-host notifications, including late completions");
+    opened = nil;
+    Click(center, stale);
+    Check(opened == nil, @"Old-host click is ignored after switching");
+    [alerts updatePanes:panes attention:@{@"%2":Kind(@"b2",@"input")}];
+    Check([center.posts.lastObject.identifier isEqual:@"r-B"], @"Local state is independent of Debra's delivered state");
+    [center finishAdd:@"r-B"];
+    [alerts beginCatchUp];
+    [alerts selectComputer:@"Debra"];
+    [alerts updatePanes:@[Pane(@"%2",@"r-B",NO)] attention:@{@"%2":Kind(@"b2",@"input")}];
+    Check(center.posts.count == 7, @"Switching clears catch-up and restores Debra's delivered state");
+    Check(![center.delivered containsObject:@"r-B"], @"Switching back removes the local banner");
+}
+
 int main(void) {
     @autoreleasepool {
         NSString *suite = [@"RK.notification.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
@@ -127,6 +203,7 @@ int main(void) {
         Drain();
         [quiet updatePanes:panes attention:rows];
         Check(denied.prompts == 1 && !denied.posts.count, @"Denied authorization never posts");
+        RemoteCatchUp(defaults);
         [defaults removePersistentDomainForName:suite];
         puts("notification fixtures passed");
     }
