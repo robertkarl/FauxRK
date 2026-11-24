@@ -22,3 +22,8 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 
 - [x] Match compact and expanded cards, the tmux inventory, and attention items to the original mockups. Check narrow layout, responder stability, and direct blocker choices.
 - [x] Review both icon concepts on the laptop. Icon selection is deferred.
+
+## FauxRK remote control
+
+- [x] Record the Debra-only SSH workflow, helper installation, preset folders, and disconnect behavior in the design interview.
+- [ ] Verify the full remote workflow on the laptop once implemented.

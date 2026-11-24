@@ -42,3 +42,8 @@ Start with a narrow resizable sidebar, ordinary window level by default, and opt
 - Assume one running copy of FauxRK. All cards, actions, and attention items in that copy belong to the selected computer.
 - Remember the selected computer on relaunch. If it is unreachable, show its disconnected state and offer Retry. Keep Spawn bound to the selected host.
 - Forward the user's prompt as entered. With Debra selected, “show me the pdf” goes to the agent in Debra’s tmux pane. The agent uses Debra’s files and applications exactly as it would if the user were typing there.
+- Debra is the only remote host for v1. The laptop connects over SSH and installs or updates a matching helper in the user's account as part of connecting. The helper runs for the connection. Agents stay alive in tmux.
+- Every click on Open in New Window opens a fresh iTerm2 window on the laptop, connects to Debra over SSH, and attaches to the selected tmux session.
+- Remote Spawn offers exactly three directories on Debra: `~/Code/regina/`, `~/homelab/`, and `~/Code/unbiasedbob-private/`.
+- If SSH drops, keep the last-known cards visible with a disconnected indicator and time last seen. Preserve drafts and disable sending until connected. If a send was in flight, mark delivery unconfirmed and leave resending to the user.
+- Reconnect automatically and refresh current pane state. Sharing read receipts across separate app instances is deferred.
