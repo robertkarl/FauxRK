@@ -41,7 +41,7 @@ static NSDictionary<NSString *,NSArray<NSString *> *> *RKOperationFields(void) {
     dispatch_once(&once, ^{
         NSArray *target = @[@"target"];
         fields = @{@"snapshot":@[@"provider?", @"model?", @"focusToken?"], @"spawn":@[@"preset", @"directory", @"prompt?"],
-            @"capture":target, @"interrupt":target, @"end":target, @"preview":target, @"attach":target, @"open":target,
+            @"capture":@[@"target", @"sourceSessionID?"], @"interrupt":target, @"end":target, @"preview":target, @"attach":target, @"open":target,
             @"steer":@[@"target",@"text"], @"read":@[@"id",@"fingerprint"], @"answer":@[@"id",@"fingerprint",@"choice"]};
     });
     return fields;
@@ -182,7 +182,7 @@ static NSUserDefaults *RKRemoteHandoffDefaults(void) {
         return @YES;
     }
     BOOL done;
-    if ([operation isEqual:@"capture"]) done = [self.core capture:target error:error];
+    if ([operation isEqual:@"capture"]) done = [self.core capture:target sourceSessionID:args[@"sourceSessionID"] error:error];
     else if ([operation isEqual:@"end"]) done = [self.core end:target error:error];
     else if ([operation isEqual:@"interrupt"]) done = [self.core interrupt:target error:error];
     else if ([operation isEqual:@"steer"]) done = [self.monitor steer:args[@"text"] toTarget:target error:error];

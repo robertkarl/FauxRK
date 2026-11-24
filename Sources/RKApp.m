@@ -39,7 +39,7 @@
 @property NSString *notificationTarget;
 @property NSUInteger previewGeneration;
 @property NSString *lastPollError;
-@property NSDictionary<NSString *, NSString *> *targets;
+@property NSDictionary<NSString *, NSDictionary *> *panesByID;
 @property NSMutableSet<NSString *> *pendingCaptures;
 @property NSMutableSet<NSString *> *pendingAnswers;
 @end
@@ -159,7 +159,7 @@
     self.lastPollError = nil;
     self.notificationTarget = nil;
     self.paneOrder = [RKPaneOrder new];
-    self.targets = @{};
+    self.panesByID = @{};
     self.sortRequested = NO;
     [self replaceRoute];
     [self.alerts selectComputer:self.isRemote ? RKAlertsDebra : RKAlertsThisMac];
@@ -229,9 +229,9 @@
     self.connected = YES;
     self.lastSeen = [NSDate date];
     self.lastPollError = nil;
-    NSMutableDictionary *targets = [NSMutableDictionary dictionary];
-    for (NSDictionary *pane in panes) targets[pane[@"id"]] = pane[@"target"];
-    self.targets = targets;
+    NSMutableDictionary *index = [NSMutableDictionary dictionary];
+    for (NSDictionary *pane in panes) index[pane[@"id"]] = pane;
+    self.panesByID = index;
     [self.sidebar displayPanes:[self.paneOrder arrange:panes resort:self.sortRequested] attention:attention];
     self.sortRequested = NO;
     if (self.notificationTarget) {
@@ -291,15 +291,16 @@
 }
 
 - (void)capturePane:(NSString *)paneID {
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (!self.connected || self.route.retired || !target || [self.pendingCaptures containsObject:target]) return;
     [self.pendingCaptures addObject:target];
-    [self perform:@"capture" arguments:@{@"target":target} then:^(id result) { [self.pendingCaptures removeObject:target]; }];
+    NSDictionary *args = @{@"target":target, @"sourceSessionID":self.panesByID[paneID][@"sessionID"]};
+    [self perform:@"capture" arguments:args then:^(id result) { [self.pendingCaptures removeObject:target]; }];
 }
 
 - (void)previewPane:(NSString *)paneID {
     RKRoute *route = self.route;
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (!target || !self.connected) return;
     NSUInteger generation = ++self.previewGeneration;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -309,7 +310,7 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             if (route != self.route) return;
             if ([error.domain isEqual:RKTransportErrorDomain]) { [self lostConnection:error]; return; }
-            if (generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
+            if (generation != self.previewGeneration || ![self.panesByID[paneID][@"target"] isEqual:target]) return;
             if (text) [self.sidebar showPreview:text forPane:paneID];
             else [self.sidebar showStatus:error.localizedDescription ?: @"Preview unavailable."];
         });
@@ -317,24 +318,24 @@
 }
 
 - (void)steerPane:(NSString *)paneID text:(NSString *)text {
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (target) [self perform:@"steer" arguments:@{@"target":target, @"text":text} then:^(id result) {
-        if (result && [self.targets[paneID] isEqual:target]) [self.sidebar didSendText:text forPane:paneID];
+        if (result && [self.panesByID[paneID][@"target"] isEqual:target]) [self.sidebar didSendText:text forPane:paneID];
     }];
 }
 
 - (void)interruptPane:(NSString *)paneID {
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (target) [self perform:@"interrupt" arguments:@{@"target":target} then:nil];
 }
 
 - (void)endPane:(NSString *)paneID {
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (target) [self perform:@"end" arguments:@{@"target":target} then:nil];
 }
 
 - (void)openTerminalForPane:(NSString *)paneID {
-    NSString *target = self.targets[paneID];
+    NSString *target = self.panesByID[paneID][@"target"];
     if (!target || !self.connected || self.route.retired) return;
     if (!self.isRemote) {
         RKRoute *local = self.route;

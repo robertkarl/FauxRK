@@ -110,7 +110,8 @@ while previews:
     assert reply["value"] == "The isolated fixture wants an answer.", reply
     previews.remove(reply["id"])
 
-assert host.run("capture", target=raw) is True
+assert host.run("capture", target=raw, sourceSessionID="$987654", expect_error=True)
+assert host.run("capture", target=raw, sourceSessionID=source["sessionID"]) is True
 snap = host.run("snapshot")
 owned = next(p for p in snap["panes"] if p["id"] == pane_id)
 assert owned["managed"] and owned["target"] != raw and owned["rkID"]
