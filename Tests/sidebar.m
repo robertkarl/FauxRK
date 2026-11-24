@@ -48,6 +48,35 @@ static void Snapshot(NSView *root, NSString *name) {
     Check([png writeToFile:[directory stringByAppendingPathComponent:name] atomically:YES], @"Save snapshot");
 }
 
+static void RenderReferenceStates(RKSidebar *sidebar) {
+    if (!NSProcessInfo.processInfo.environment[@"RK_UI_SNAPSHOTS"]) return;
+    NSMutableArray *panes = [NSMutableArray array];
+    NSArray *titles = @[@"Inference engine optimization", @"Running experiment on Qwen 27B",
+                        @"Development on T3 Code", @"Bugfix on Strata", @"research:notes", @"data:prep"];
+    NSArray *presets = @[@"Fable Medium", @"Astra Medium", @"Opus", @"Luna Medium"];
+    for (NSUInteger index = 0; index < titles.count; index++) {
+        NSMutableDictionary *pane = [Pane(index + 90) mutableCopy];
+        pane[@"managed"] = @(index < presets.count);
+        pane[@"title"] = titles[index];
+        pane[@"session"] = @[@"inference-engine", @"qwen", @"t3-code", @"strata", @"research", @"data"][index];
+        pane[@"window"] = @[@"agent", @"agent", @"agent", @"agent", @"notes", @"prep"][index];
+        pane[@"path"] = [@"~/Code/" stringByAppendingString:pane[@"session"]];
+        if (index < presets.count) pane[@"preset"] = presets[index];
+        [panes addObject:pane];
+    }
+    NSDictionary *blocker = @{@"kind":@"input", @"fingerprint":@"dependency", @"choiceSource":@"terminal",
+        @"question":@"Install @t3/runtime and retry?", @"summary":@"The build needs @t3/runtime. Install it and retry?",
+        @"choices":@[@{@"label":@"Install and retry", @"text":@"y"}, @{@"label":@"Decline", @"text":@"n"}]};
+    NSDictionary *result = @{@"kind":@"complete", @"fingerprint":@"experiment", @"summary":@"The experiment finished. Results and metrics are ready."};
+    NSDictionary *events = @{@"%92":blocker, @"%91":result};
+    [sidebar displayPanes:panes attention:events];
+    [sidebar.window.contentView layoutSubtreeIfNeeded];
+    Snapshot(sidebar.window.contentView, @"reference-dashboard.png");
+    [sidebar revealPane:@"%90"];
+    [sidebar.window.contentView layoutSubtreeIfNeeded];
+    Snapshot(sidebar.window.contentView, @"reference-expanded.png");
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -97,6 +126,7 @@ int main(void) {
         Check([actions.launched isEqual:@"Review the changes."], @"Submitted first prompt is immutable");
         Snapshot(view, @"spawn.png");
         [sidebar didSpawnWithPrompt:spawn.string];
+        RenderReferenceStates(sidebar);
         [sidebar.window orderOut:nil];
         puts("sidebar fixtures passed");
     }

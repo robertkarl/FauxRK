@@ -1,5 +1,6 @@
 #import "RKSidebar.h"
 #import "RKAgentCardView.h"
+#import "RKAttentionRowView.h"
 #import "RKDiscoveryView.h"
 #import "RKSpawnView.h"
 
@@ -13,14 +14,13 @@
 @property (nonatomic, weak) id<RKSidebarDelegate> actions;
 @property (nonatomic) NSScrollView *scroll;
 @property (nonatomic) NSStackView *content;
-@property (nonatomic) NSTextField *connection;
+@property (nonatomic) RKBadgeView *connection;
 @property (nonatomic) NSTextField *feedback;
 @property (nonatomic) RKActionButton *pin;
 @property (nonatomic) RKSpawnView *launcher;
 @property (nonatomic) NSStackView *agentBody;
 @property (nonatomic) NSStackView *attentionBody;
-@property (nonatomic) NSTextField *agentCount;
-@property (nonatomic) NSTextField *requestCount;
+@property (nonatomic) RKBadgeView *requestCount;
 @property (nonatomic) NSTextField *otherCount;
 @property (nonatomic) NSTextField *noAgents;
 @property (nonatomic) NSTextField *noRequests;
@@ -39,15 +39,17 @@
 
 @implementation RKSidebar
 - (instancetype)initWithDelegate:(id<RKSidebarDelegate>)delegate {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,420,780)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,462,828)
         styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     if (!(self = [super initWithWindow:window])) return nil;
     _actions = delegate;
     _cards = [NSMutableDictionary dictionary];
     window.title = @"RK";
+    window.titlebarAppearsTransparent = YES;
+    window.titleVisibility = NSWindowTitleHidden;
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-    window.backgroundColor = [NSColor colorWithSRGBRed:.047 green:.051 blue:.065 alpha:1];
+    window.backgroundColor = [NSColor colorWithSRGBRed:.029 green:.038 blue:.052 alpha:1];
     window.contentMinSize = NSMakeSize(370, 390);
     if (![window setFrameUsingName:@"RKSidebarPlacement"]) {
         NSRect available = NSScreen.mainScreen.visibleFrame;
@@ -77,10 +79,7 @@
         [frame.topAnchor constraintEqualToAnchor:root.topAnchor],
         [frame.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
     ]];
-    RKAddFullWidth(frame, RKInset([self buildHeader], NSEdgeInsetsMake(10,15,12,15)));
-    NSBox *line = [NSBox new];
-    line.boxType = NSBoxSeparator;
-    RKAddFullWidth(frame, line);
+    RKAddFullWidth(frame, RKInset([self buildHeader], NSEdgeInsetsMake(3,16,8,16)));
     self.scroll = [NSScrollView new];
     self.scroll.hasVerticalScroller = YES;
     self.scroll.autohidesScrollers = YES;
@@ -90,7 +89,7 @@
     RKFlippedDocument *doc = [RKFlippedDocument new];
     doc.translatesAutoresizingMaskIntoConstraints = NO;
     self.scroll.documentView = doc;
-    self.content = RKColumn(12);
+    self.content = RKColumn(13);
     self.content.translatesAutoresizingMaskIntoConstraints = NO;
     [doc addSubview:self.content];
     [NSLayoutConstraint activateConstraints:@[
@@ -99,7 +98,7 @@
         [doc.topAnchor constraintEqualToAnchor:self.scroll.contentView.topAnchor],
         [self.content.leadingAnchor constraintEqualToAnchor:doc.leadingAnchor constant:14],
         [self.content.trailingAnchor constraintEqualToAnchor:doc.trailingAnchor constant:-14],
-        [self.content.topAnchor constraintEqualToAnchor:doc.topAnchor constant:13],
+        [self.content.topAnchor constraintEqualToAnchor:doc.topAnchor constant:3],
         [self.content.bottomAnchor constraintEqualToAnchor:doc.bottomAnchor constant:-16],
     ]];
     self.launcher = [[RKSpawnView alloc] initWithDelegate:self.actions];
@@ -112,18 +111,23 @@
     __weak typeof(self) weak = self;
     NSStackView *column = RKColumn(7);
     NSStackView *top = RKRow(7);
-    [top addArrangedSubview:RKLabel(@"Agent Control", 22, NSFontWeightBold)];
+    [top addArrangedSubview:RKLabel(@"Agent Control", 25, NSFontWeightBold)];
     [top addArrangedSubview:RKSpring()];
     self.pin = [RKActionButton title:@"" symbol:@"pin" help:@"Keep on Top" tint:RKTintMuted action:^{
         [weak setPinned:weak.window.level != NSFloatingWindowLevel];
     }];
-    [top addArrangedSubview:self.pin];
     [top addArrangedSubview:[RKActionButton title:@"Spawn Agent" symbol:@"plus" help:@"Spawn Agent" tint:RKTintViolet action:^{
         if (weak.launcher.hidden) [weak showSpawn]; else weak.launcher.hidden = YES;
     }]];
     RKAddFullWidth(column, top);
-    self.connection = RKDetail(@"Connecting to local tmux…");
-    RKAddFullWidth(column, self.connection);
+    self.connection = [[RKBadgeView alloc] initWithText:@"Connecting to tmux…" tint:RKTintMuted showsDot:YES];
+    self.connection.neutralSurface = YES;
+    NSStackView *state = RKRow(8);
+    [state addArrangedSubview:self.connection];
+    [state addArrangedSubview:RKSpring()];
+    self.pin.plainAppearance = YES;
+    [state addArrangedSubview:self.pin];
+    RKAddFullWidth(column, state);
     self.feedback = RKDetail(@"");
     self.feedback.maximumNumberOfLines = 3;
     self.feedback.lineBreakMode = NSLineBreakByWordWrapping;
@@ -141,44 +145,56 @@
     [NSUserDefaults.standardUserDefaults setBool:pinned forKey:@"RKKeepOnTop"];
 }
 
-- (NSTextField *)section:(NSString *)title symbol:(NSString *)symbol tint:(RKTint)tint action:(NSButton *)action {
+- (RKPanelView *)section:(NSString *)title symbol:(NSString *)symbol tint:(RKTint)tint count:(NSView *)count action:(NSView *)action {
+    RKPanelView *panel = [[RKPanelView alloc] initWithTint:RKTintMuted];
+    panel.showsAccentRail = NO;
+    panel.body.spacing = 7;
     NSStackView *row = RKRow(6);
     NSImageView *icon = [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil]];
     icon.contentTintColor = RKTintColor(tint);
     [row addArrangedSubview:icon];
-    [row addArrangedSubview:RKLabel(title, 14, NSFontWeightSemibold)];
-    NSTextField *count = RKDetail(@"");
+    [row addArrangedSubview:RKLabel(title, 16, NSFontWeightBold)];
     [row addArrangedSubview:count];
     [row addArrangedSubview:RKSpring()];
     if (action) [row addArrangedSubview:action];
-    RKAddFullWidth(self.content,row);
-    return count;
+    RKAddFullWidth(panel.body, row);
+    RKAddFullWidth(self.content, panel);
+    return panel;
 }
 
 - (void)buildSections {
-    self.agentCount = [self section:@"Captured agents" symbol:@"terminal" tint:RKTintMint action:nil];
     self.agentBody = RKColumn(6);
     RKAddFullWidth(self.content, self.agentBody);
-    self.noAgents = RKDetail(@"Spawn an agent or capture a tmux pane to start.");
+    self.noAgents = RKDetail(@"Spawn an agent or capture a pane to start.");
     RKAddFullWidth(self.content, self.noAgents);
-    self.requestCount = [self section:@"Needs attention" symbol:@"bolt.fill" tint:RKTintAmber action:nil];
-    self.attentionBody = RKColumn(5);
-    RKAddFullWidth(self.content, self.attentionBody);
-    self.noRequests = RKDetail(@"No requests waiting.");
-    RKAddFullWidth(self.content, self.noRequests);
+    [self buildDiscovery];
+    [self buildAttention];
+}
+
+- (void)buildDiscovery {
     __weak typeof(self) weak = self;
     RKActionButton *sort = [RKActionButton title:@"Sort by activity" symbol:@"arrow.up.arrow.down" help:@"Sort other panes by current activity" tint:RKTintMuted action:^{
         [weak.actions sortPanesByActivity];
     }];
-    self.otherCount = [self section:@"Other tmux panes" symbol:@"rectangle.on.rectangle" tint:RKTintBlue action:sort];
-    [self buildPreview];
+    self.otherCount = RKDetail(@"");
+    RKPanelView *panel = [self section:@"Other tmux panes" symbol:@"square.on.square" tint:RKTintMuted count:self.otherCount action:sort];
+    [self buildPreviewIn:panel.body];
     self.discovery = [[RKDiscoveryView alloc] initWithDelegate:self.actions];
-    RKAddFullWidth(self.content, self.discovery);
+    RKAddFullWidth(panel.body, self.discovery);
     self.noOther = RKDetail(@"No uncaptured panes.");
-    RKAddFullWidth(self.content, self.noOther);
+    RKAddFullWidth(panel.body, self.noOther);
 }
 
-- (void)buildPreview {
+- (void)buildAttention {
+    self.requestCount = [[RKBadgeView alloc] initWithText:@"0" tint:RKTintRed showsDot:NO];
+    RKPanelView *panel = [self section:@"Needs attention" symbol:@"bolt.fill" tint:RKTintAmber count:self.requestCount action:nil];
+    self.attentionBody = RKColumn(6);
+    RKAddFullWidth(panel.body, self.attentionBody);
+    self.noRequests = RKDetail(@"No requests waiting.");
+    RKAddFullWidth(panel.body, self.noRequests);
+}
+
+- (void)buildPreviewIn:(NSStackView *)column {
     self.preview = [[RKPanelView alloc] initWithTint:RKTintBlue];
     self.previewTitle = RKLabel(@"Pane preview", 13, NSFontWeightSemibold);
     NSStackView *head = RKRow(5);
@@ -199,7 +215,7 @@
     self.previewText.selectable = YES;
     RKAddFullWidth(self.preview.body, self.previewText);
     self.preview.hidden = YES;
-    RKAddFullWidth(self.content, self.preview);
+    RKAddFullWidth(column, self.preview);
 }
 
 - (void)displayPanes:(NSArray<NSDictionary *> *)panes attention:(NSDictionary<NSString *,NSDictionary *> *)attention {
@@ -214,11 +230,11 @@
     }
     self.paneByID = index;
     self.requests = attention.copy;
-    self.connection.stringValue = [NSString stringWithFormat:@"Local tmux   ·   %lu session%@   ·   %lu pane%@", (unsigned long)sessions.count, sessions.count == 1 ? @"" : @"s", (unsigned long)panes.count, panes.count == 1 ? @"" : @"s"];
-    self.connection.textColor = RKTintColor(panes.count ? RKTintMint : RKTintMuted);
+    self.connection.stringValue = panes.count ? [NSString stringWithFormat:@"tmux connected   (%lu session%@, %lu pane%@)", (unsigned long)sessions.count, sessions.count == 1 ? @"" : @"s", (unsigned long)panes.count, panes.count == 1 ? @"" : @"s"] : @"No local tmux sessions";
+    self.connection.tint = panes.count ? RKTintMint : RKTintMuted;
     [self updateCards:managed];
     [self updateAttention:managed];
-    self.otherCount.stringValue = [@(others.count) stringValue];
+    self.otherCount.stringValue = [NSString stringWithFormat:@"(%lu)", (unsigned long)others.count];
     self.discovery.hidden = !others.count;
     self.noOther.hidden = others.count > 0;
     [self.discovery displayPanes:others];
@@ -252,43 +268,41 @@
         if (![ids containsObject:paneID]) [self.cards removeObjectForKey:paneID];
     }
     RKReplaceChildren(self.agentBody, visible);
-    self.agentCount.stringValue = [@(visible.count) stringValue];
     self.noAgents.hidden = visible.count > 0;
     self.agentBody.hidden = !visible.count;
 }
 
 - (void)updateAttention:(NSArray *)managed {
     NSMutableArray *snapshot = [NSMutableArray array];
+    NSMutableArray *results = [NSMutableArray array];
     for (NSDictionary *pane in managed) {
         NSDictionary *request = self.requests[pane[@"id"]];
         if (!request) continue;
-        [snapshot addObject:@[pane[@"id"],RKPaneTitle(pane),RKRequestKind(request),request[@"summary"] ?: @"",request[@"kind"] ?: @""]];
+        NSMutableArray *section = [request[@"kind"] isEqual:@"complete"] ? results : snapshot;
+        [section addObject:@[pane[@"id"], RKPaneTitle(pane), request.copy]];
     }
+    [snapshot addObjectsFromArray:results];
     if ([snapshot isEqual:self.attentionSnapshot]) return;
     self.attentionSnapshot = snapshot;
     NSMutableArray *rows = [NSMutableArray array];
     for (NSArray *entry in snapshot) [rows addObject:[self attentionRow:entry]];
     RKReplaceChildren(self.attentionBody, rows);
     self.requestCount.stringValue = [@(rows.count) stringValue];
+    self.requestCount.tint = rows.count ? RKTintRed : RKTintMuted;
     self.attentionBody.hidden = !rows.count;
     self.noRequests.hidden = rows.count > 0;
 }
 
 - (NSView *)attentionRow:(NSArray *)entry {
     NSString *paneID = entry[0];
-    RKTint tint = RKRequestTint(@{@"kind":entry[4]});
-    RKPanelView *row = [[RKPanelView alloc] initWithTint:tint];
-    NSStackView *heading = RKRow(5);
-    [heading addArrangedSubview:RKLabel(entry[1],13,NSFontWeightMedium)];
-    [heading addArrangedSubview:RKSpring()];
     __weak typeof(self) weak = self;
-    [heading addArrangedSubview:[RKActionButton title:entry[2] symbol:@"chevron.right" help:[NSString stringWithFormat:@"Open %@ for %@",entry[2],entry[1]] tint:tint action:^{
+    NSDictionary *request = entry[2];
+    RKAttentionRowView *row = [[RKAttentionRowView alloc] initWithPaneTitle:entry[1] request:request action:^{
         [weak revealPane:paneID];
-    }]];
-    RKAddFullWidth(row.body, heading);
-    NSTextField *summary = RKDetail(entry[3]);
-    summary.toolTip = summary.stringValue;
-    RKAddFullWidth(row.body, summary);
+    }];
+    row.answerChoice = ^(NSDictionary *choice) {
+        [weak.actions answerPane:paneID fingerprint:request[@"fingerprint"] choice:choice];
+    };
     return row;
 }
 
