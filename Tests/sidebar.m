@@ -81,7 +81,11 @@ int main(void) {
         steer.string = @"Summarize the changes.";
         [(NSButton *)Find(view, @"steer") performClick:nil];
         Check([actions.steered isEqual:steer.string], @"Deliver steer");
-        [sidebar didSendText:steer.string forPane:@"%0"];
+        [steer.textStorage.mutableString appendString:@" Next."];
+        Check([actions.steered isEqual:@"Summarize the changes."], @"Submitted steer is immutable");
+        [sidebar didSendText:actions.steered forPane:@"%0"];
+        Check([steer.string hasSuffix:@"Next."], @"Keep typing after send");
+        [sidebar didSendText:steer.string.copy forPane:@"%0"];
         Check(!steer.string.length, @"Clear acknowledged draft");
         Snapshot(view, @"expanded-agent.png");
         [sidebar showSpawn];
@@ -89,6 +93,8 @@ int main(void) {
         [spawn insertText:@"Review the changes." replacementRange:spawn.selectedRange];
         [(NSButton *)Find(view, @"launch") performClick:nil];
         Check([actions.launched isEqual:spawn.string], @"Launch with prompt");
+        [spawn.textStorage.mutableString appendString:@" Again."];
+        Check([actions.launched isEqual:@"Review the changes."], @"Submitted first prompt is immutable");
         Snapshot(view, @"spawn.png");
         [sidebar didSpawnWithPrompt:spawn.string];
         [sidebar.window orderOut:nil];
