@@ -20,6 +20,7 @@
 @property RKPaneOrder *paneOrder;
 @property BOOL launching;
 @property NSString *notificationTarget;
+@property NSUInteger previewGeneration;
 @property NSString *lastPollError;
 @property NSDictionary<NSString *, NSString *> *targets;
 @property NSMutableSet<NSString *> *pendingCaptures;
@@ -150,10 +151,12 @@
 - (void)previewPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
     if (!target) return;
+    NSUInteger generation = ++self.previewGeneration;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSError *error = nil;
         NSString *text = [self.monitor preview:target error:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
             if (text) [self.sidebar showPreview:text forPane:paneID];
             else [self.sidebar showStatus:error.localizedDescription ?: @"Preview unavailable."];
         });

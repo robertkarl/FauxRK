@@ -3,6 +3,7 @@ SOURCES := $(wildcard Sources/*.m)
 HEADERS := $(wildcard Sources/*.h)
 FRAMEWORKS := -framework Cocoa -framework ApplicationServices -framework AVFoundation -framework AudioToolbox -framework UserNotifications
 SIGN_ID ?= -
+.DELETE_ON_ERROR:
 .PHONY: all run install test
 all: $(APP)/Contents/MacOS/RK
 $(APP)/Contents/MacOS/RK: $(SOURCES) $(HEADERS) Info.plist Makefile
