@@ -28,6 +28,7 @@ static NSString *RKHash(NSString *s) {
 }
 @interface RKMonitor ()
 @property(nonatomic,strong) RKCore *core;
+@property(nonatomic,strong) NSUserDefaults *handoffDefaults;
 @property(nonatomic,strong) NSOperationQueue *helpers;
 @property(nonatomic,strong) NSMutableDictionary<NSString *,NSMutableDictionary *> *observations;
 @property(nonatomic,strong) NSMutableDictionary *handoffs;
@@ -35,20 +36,24 @@ static NSString *RKHash(NSString *s) {
 
 @implementation RKMonitor
 - (instancetype)initWithCore:(RKCore *)core {
+    return [self initWithCore:core handoffDefaults:NSUserDefaults.standardUserDefaults];
+}
+- (instancetype)initWithCore:(RKCore *)core handoffDefaults:(NSUserDefaults *)defaults {
     if ((self = [super init])) {
+        _handoffDefaults = defaults;
         _core = core;
         _helpers = [NSOperationQueue new];
         _helpers.name = @"RK assistant summaries";
         _helpers.maxConcurrentOperationCount = 4;
         _observations = [NSMutableDictionary new];
-        _handoffs = [[NSUserDefaults.standardUserDefaults dictionaryForKey:RKLastHandoffs] mutableCopy] ?: [NSMutableDictionary new];
+        _handoffs = [[defaults dictionaryForKey:RKLastHandoffs] mutableCopy] ?: [NSMutableDictionary new];
     }
     return self;
 }
 - (void)saveHandoff:(NSDictionary *)handoff forID:(NSString *)rkID {
     if ([_handoffs[rkID] isEqual:handoff] || (!_handoffs[rkID] && !handoff)) return;
     _handoffs[rkID] = handoff;
-    [NSUserDefaults.standardUserDefaults setObject:_handoffs forKey:RKLastHandoffs];
+    [self.handoffDefaults setObject:_handoffs forKey:RKLastHandoffs];
 }
 
 - (void)requestHelper:(NSString *)screen signature:(NSString *)signature pane:(NSString *)pid provider:(NSString *)provider observation:(NSMutableDictionary *)obs {

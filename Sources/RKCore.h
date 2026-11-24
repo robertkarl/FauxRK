@@ -20,6 +20,7 @@
 
 @interface RKMonitor : NSObject
 - (instancetype)initWithCore:(RKCore *)core;
+- (instancetype)initWithCore:(RKCore *)core handoffDefaults:(NSUserDefaults *)defaults;
 // Call from a serial background queue. Rows keyed by pane id. Stable row fields:
 // kind ("input", "maybe", "complete"), summary, question, fingerprint, choices
 // (array of {label,key} or {label,text}), suggestedReply (optional).

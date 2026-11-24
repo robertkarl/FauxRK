@@ -69,6 +69,38 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
     return nil;
 }
 
+#ifndef RK_SSH_HANDOFF_SUITE
+#define RK_SSH_HANDOFF_SUITE @"net.robertkarl.FauxRK.SSHHost"
+#endif
+
+// The SSH installer keys executable names by their checksum. Keep receipts in
+// a single per-user domain and import the latest pre-suite ledger on upgrade.
+static NSUserDefaults *RKRemoteHandoffDefaults(void) {
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:RK_SSH_HANDOFF_SUITE];
+    NSString *key = @"RKLastHandoffsV1";
+    if ([defaults objectForKey:key]) return defaults;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSURL *directory = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences"] isDirectory:YES];
+    NSArray *files = [fm contentsOfDirectoryAtURL:directory includingPropertiesForKeys:@[NSURLContentModificationDateKey]
+                                         options:NSDirectoryEnumerationSkipsHiddenFiles error:NULL];
+    NSRegularExpression *pattern = [NSRegularExpression regularExpressionWithPattern:@"\\AFauxRKHost-[0-9a-fA-F]{64}\\.plist\\z" options:0 error:NULL];
+    NSDate *newestDate = NSDate.distantPast;
+    NSDictionary *latest = @{};
+    for (NSURL *file in files) {
+        NSString *name = file.lastPathComponent;
+        if (![pattern numberOfMatchesInString:name options:0 range:NSMakeRange(0,name.length)]) continue;
+        NSDate *modified = nil;
+        if (![file getResourceValue:&modified forKey:NSURLContentModificationDateKey error:NULL] ||
+            [modified compare:newestDate] != NSOrderedDescending) continue;
+        NSDictionary *old = [NSDictionary dictionaryWithContentsOfURL:file error:NULL];
+        if (![old[key] isKindOfClass:NSDictionary.class]) continue;
+        latest = old[key];
+        newestDate = modified;
+    }
+    [defaults setObject:latest forKey:key];
+    return defaults;
+}
+
 @interface RKLocalHost ()
 @property(nonatomic) RKCore *core;
 @property(nonatomic) RKMonitor *monitor;
@@ -82,7 +114,7 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
     if ((self = [super init])) {
         _sshHelper = remote;
         _core = [[RKCore alloc] initWithDesktopFocus:!remote];
-        _monitor = [[RKMonitor alloc] initWithCore:_core];
+        _monitor = [[RKMonitor alloc] initWithCore:_core handoffDefaults:remote ? RKRemoteHandoffDefaults() : NSUserDefaults.standardUserDefaults];
     }
     return self;
 }

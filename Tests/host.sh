@@ -7,6 +7,7 @@ export TMPDIR="$scratch"
 export RK_TMUX_SOCKET="$scratch/s"
 export RK_HOST_FIXTURE="$scratch"
 export ZDOTDIR="$scratch"
+export RK_HOST_FIXTURE_SUITE="net.robertkarl.FauxRK.Tests.$(uuidgen)"
 export CFFIXED_USER_HOME="$scratch/home"
 mkdir -p "$scratch/bin" "$CFFIXED_USER_HOME/Code/regina" "$CFFIXED_USER_HOME/homelab" "$CFFIXED_USER_HOME/Code/unbiasedbob-private"
 cat > "$scratch/bin/claude" <<'PYTHON'
@@ -20,7 +21,7 @@ while True: time.sleep(1)
 PYTHON
 chmod +x "$scratch/bin/claude"
 ln -s claude "$scratch/bin/codex"
-trap 'tmux -S "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
+trap 'defaults delete "$RK_HOST_FIXTURE_SUITE" >/dev/null 2>&1 || true; tmux -S "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
 cat > "$ZDOTDIR/.zshrc" <<'ZSH'
 export PATH="$RK_HOST_FIXTURE/bin:$PATH"
 alias claudesonnet='rk_preview'
@@ -31,7 +32,7 @@ rk_preview() {
   print -r -- '{"state":"input","summary":"The isolated fixture wants an answer.","question":"Continue? [y/N]"}'
 }
 ZSH
-xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources \
+xcrun clang -fobjc-arc -fmodules -Wall -Wextra -Wno-unused-parameter -ISources "-DRK_SSH_HANDOFF_SUITE=@\"$RK_HOST_FIXTURE_SUITE\"" \
     -framework Cocoa -framework ApplicationServices Helper/main.m Sources/RKLocalHost.m Sources/RKCore.m \
     Sources/RKMonitor.m Sources/RKPaneScreen.m Sources/RKHelper.m Sources/RKRemoteTerminal.m -o "$scratch/host-fixture"
 python3 Tests/host_protocol.py "$scratch/host-fixture" "$scratch"

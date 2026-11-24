@@ -2,6 +2,8 @@
 
 import json
 import os
+import plistlib
+import shutil
 from pathlib import Path
 import select
 import subprocess
@@ -19,8 +21,8 @@ def tmux(*args):
 
 
 class Host:
-    def __init__(self):
-        self.proc = subprocess.Popen([binary], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+    def __init__(self, executable=binary):
+        self.proc = subprocess.Popen([executable], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 
     def write(self, data):
         self.proc.stdin.write(data)
@@ -64,6 +66,11 @@ while True: time.sleep(1)
 pane_id = tmux("-f", "/dev/null", "new-session", "-dP", "-F", "#{pane_id}", "-s", "source", sys.executable, "-u", str(script), str(work))
 sibling = tmux("split-window", "-dP", "-F", "#{pane_id}", "-t", pane_id, "/bin/cat")
 assert tmux("list-clients") == ""
+# Model a previous checksum-named installation's on-disk receipt ledger.
+prefs = Path(os.environ["CFFIXED_USER_HOME"]) / "Library/Preferences"
+prefs.mkdir(parents=True, exist_ok=True)
+legacy = {"legacy-agent": {"id": "prior-event", "signature": "prior-screen", "read": True}}
+(prefs / ("FauxRKHost-" + "a" * 64 + ".plist")).write_bytes(plistlib.dumps({"RKLastHandoffsV1": legacy}))
 host = Host()
 host.write(b"[]\n")
 assert host.receive()["id"] is None
@@ -85,6 +92,8 @@ snap = host.run("snapshot", provider="sonnet", model="qwen3:4b", focusToken="")
 source = next(p for p in snap["panes"] if p["id"] == pane_id)
 assert not source["managed"] and not source["focused"]
 assert not snap["attention"]
+stored = plistlib.loads(subprocess.check_output(["defaults", "export", os.environ["RK_HOST_FIXTURE_SUITE"], "-"]))
+assert stored["RKLastHandoffsV1"]["legacy-agent"] == legacy["legacy-agent"]
 raw = source["target"]
 
 # A blocked preview never holds up snapshot or control traffic.
@@ -130,7 +139,9 @@ partial = {"id": "incomplete", "op": "end", "args": {"target": target}}
 host.write(json.dumps(partial).encode())
 host.close()
 assert tmux("display-message", "-p", "-t", pane_id, "#{pane_id}") == pane_id
-host = Host()
+upgraded = work / "FauxRKHost-upgraded-fixture"
+shutil.copy2(binary, upgraded)
+host = Host(upgraded)
 restored = host.run("snapshot")
 assert any(p["rkID"] == owned["rkID"] for p in restored["panes"])
 assert not restored["attention"], "A previously read result resurfaced on reconnect"
