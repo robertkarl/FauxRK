@@ -10,7 +10,7 @@ RK is a first-class place to talk to agents. The intended desk has RK at the lef
 - Preview summarizes one uncaptured pane on demand. Capture moves its live pane to a dedicated session, preserving the running process and scrollback. A client disconnect during capture is acceptable.
 - A captured or spawned agent has one session, one window, and one pane. Treat a login window as one invocation. Multiple successive agents in the same login window were outside the design discussion.
 - Use recognizable session names and durable tmux markers. Reopening RK restores the cards without another capture. Quitting RK leaves the sessions running.
-- Name a card automatically from tmux, the folder, or a helper summary. No naming dialog.
+- A captured card uses the tmux session name the user already knows. Preserve its window name. If sibling panes still need the original session, the separate managed session gets a readable suffix and the card keeps the original name. Spawns are named automatically.
 
 ## Starting and talking to agents
 

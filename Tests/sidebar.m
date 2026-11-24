@@ -227,8 +227,8 @@ int main(void) {
         Actions *actions = [Actions new];
         NSMutableDictionary *captured = [Pane(0) mutableCopy];
         Check([RKPaneTitle(captured) isEqual:captured[@"title"]], @"Older cards keep their existing title");
-        captured[@"capturedLabel"] = @"Release notes:writer";
-        Check([RKPaneTitle(captured) isEqual:captured[@"capturedLabel"]], @"Card and attention titles match the original discovery label");
+        captured[@"capturedLabel"] = @"Release notes";
+        Check([RKPaneTitle(captured) isEqual:captured[@"capturedLabel"]], @"Card and attention titles match the original tmux session");
         RKSidebar *sidebar = [[RKSidebar alloc] initWithDelegate:actions];
         NSMutableArray *panes = [NSMutableArray array];
         for (NSInteger n=0; n<80; n++) [panes addObject:Pane(n)];

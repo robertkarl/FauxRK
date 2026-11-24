@@ -7,7 +7,7 @@ The intended desk has FauxRK on the left and Netflix on the right. You can give 
 ## The first five minutes
 
 1. Open FauxRK. Choose **This Mac** or **Debra**. **Other tmux panes** shows what’s running on the selected computer. **Sort by activity** puts current work near the top and holds the order while you browse.
-2. Choose **Preview** to inspect an unfamiliar pane, or **Capture** to move a live pane into its own FauxRK-managed session. Existing work stays alive when FauxRK quits.
+2. Choose **Preview** to inspect an unfamiliar pane, or **Capture** to move a live pane into its own FauxRK-managed session. The card keeps the original tmux session name. If other panes still use that session, the dedicated session gets a readable suffix. Existing work stays alive when FauxRK quits.
 3. Choose **Spawn Agent** to start Astra Medium, Fable Medium, Opus, or Luna Medium in a project folder. You can leave the first prompt blank.
 4. Expand a card to steer the conversation. Hold **F10** with the prompt focused to dictate locally. Release to insert the transcript, edit it, and send when ready.
 5. Watch **Needs attention** for questions and turn completions. FauxRK quotes pending questions, offers recognized terminal choices, and lets you edit suggested replies. Opening a result marks it read. Answering a blocker in either FauxRK or tmux updates the same card.

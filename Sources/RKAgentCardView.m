@@ -341,7 +341,9 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     if (self.status.tint != tint) self.status.tint = tint;
     self.folder.stringValue = [pane[@"path"] stringByAbbreviatingWithTildeInPath] ?: @"";
     self.folder.toolTip = pane[@"path"];
-    self.session.stringValue = [NSString stringWithFormat:@"%@ · %@",pane[@"session"] ?: @"",self.paneID];
+    NSString *location = pane[@"session"] ?: @"";
+    if ([pane[@"capturedLabel"] length]) location = [NSString stringWithFormat:@"%@:%@", location, pane[@"window"] ?: @""];
+    self.session.stringValue = [NSString stringWithFormat:@"%@ · %@",location,self.paneID];
     self.session.toolTip = [NSString stringWithFormat:@"%@ / %@ / %@",pane[@"session"] ?: @"",pane[@"window"] ?: @"",self.paneID];
     self.disclose.toolTip = [NSString stringWithFormat:@"Show or hide %@", name];
     if ([request[@"kind"] isEqual:@"complete"]) self.latestResult = request[@"summary"];
