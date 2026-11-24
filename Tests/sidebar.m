@@ -108,7 +108,7 @@ int main(void) {
         Check([reply.string isEqual:@"Inspect regina first."], @"Preserve edited helper suggestion");
         NSTextView *steer = (NSTextView *)Find(view, @"steer-%0");
         steer.string = @"Summarize the changes.";
-        [(NSButton *)Find(view, @"steer") performClick:nil];
+        [(NSButton *)Find(view, @"card-send-steer-%0") performClick:nil];
         Check([actions.steered isEqual:steer.string], @"Deliver steer");
         [steer.textStorage.mutableString appendString:@" Next."];
         Check([actions.steered isEqual:@"Summarize the changes."], @"Submitted steer is immutable");
