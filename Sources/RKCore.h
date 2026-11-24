@@ -24,5 +24,6 @@
 - (NSDictionary<NSString *,NSDictionary *> *)update:(NSArray<NSDictionary *> *)panes;
 - (void)markRead:(NSString *)paneID fingerprint:(NSString *)fingerprint;
 - (BOOL)answer:(NSDictionary *)choice pane:(NSString *)paneID fingerprint:(NSString *)fingerprint error:(NSError **)error;
+- (BOOL)steer:(NSString *)text toTarget:(NSString *)target error:(NSError **)error;
 - (NSString *)preview:(NSString *)paneID error:(NSError **)error;
 @end

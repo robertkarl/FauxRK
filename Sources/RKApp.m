@@ -170,7 +170,7 @@
 - (void)steerPane:(NSString *)paneID text:(NSString *)text {
     NSString *target = self.targets[paneID];
     if (!target) return;
-    [self perform:^BOOL(NSError **error) { return [self.core sendText:text toPane:target error:error]; }
+    [self perform:^BOOL(NSError **error) { return [self.monitor steer:text toTarget:target error:error]; }
             then:^(BOOL ok) { if (ok) [self.sidebar didSendText:text forPane:paneID]; }];
 }
 - (void)interruptPane:(NSString *)paneID {
