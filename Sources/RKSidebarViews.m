@@ -101,6 +101,8 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children) {
         button.imagePosition = title.length ? NSImageLeading : NSImageOnly;
     }
     button.toolTip = help;
+    NSString *identifier = [(title.length ? title : help) lowercaseString];
+    [button setAccessibilityIdentifier:[identifier stringByReplacingOccurrencesOfString:@" " withString:@"-"]];
     [button setAccessibilityLabel:help.length ? help : title];
     button.target = button;
     button.action = @selector(performAction:);

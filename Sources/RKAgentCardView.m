@@ -66,6 +66,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
         if (weak.expanded) weak.expanded = NO;
         else if (weak.openCard) weak.openCard();
     }];
+    [_disclose setAccessibilityIdentifier:[@"agent-" stringByAppendingString:_paneID]];
     NSStackView *row = RKRow(6);
     [row addArrangedSubview:_disclose];
     [row addArrangedSubview:_name];
@@ -93,6 +94,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
     _questionBody = RKColumn(7);
     RKAddFullWidth(_detail, _questionBody);
     _composer = [[RKPromptView alloc] initWithHint:@"Message this agent…"];
+    [_composer.editor setAccessibilityIdentifier:[@"steer-" stringByAppendingString:self.paneID]];
     RKAddFullWidth(_detail, _composer);
     NSStackView *actions = RKRow(4);
     [actions addArrangedSubview:[RKActionButton title:@"Open in New Window" symbol:@"macwindow" help:@"Attach in a new iTerm2 window" tint:RKTintMuted action:^{
@@ -146,8 +148,13 @@ static NSTextField *WrappedLabel(CGFloat size) {
     NSTextField *question = WrappedLabel(13);
     question.stringValue = [self.request[@"question"] length] ? self.request[@"question"] : (self.request[@"summary"] ?: @"");
     RKAddFullWidth(self.questionBody, question);
-    for (NSDictionary *choice in self.request[@"choices"]) [self addChoice:choice];
-    [self addReplyWithText:draft ?: self.request[@"suggestedReply"]];
+    if ([self.request[@"responseSent"] boolValue]) {
+        [self.questionBody addArrangedSubview:RKDetail(@"Response sent · waiting for agent")];
+        return;
+    }
+    NSArray *choices = self.request[@"choices"];
+    for (NSDictionary *choice in choices) [self addChoice:choice];
+    if (!choices.count) [self addReplyWithText:draft ?: self.request[@"suggestedReply"]];
 }
 
 - (void)addChoice:(NSDictionary *)choice {
@@ -166,6 +173,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
     __weak typeof(self) weak = self;
     NSString *fingerprint = self.request[@"fingerprint"];
     self.reply = [[RKPromptView alloc] initWithHint:@"Reply to the request…"];
+    [self.reply.editor setAccessibilityIdentifier:[@"reply-" stringByAppendingString:self.paneID]];
     RKAddFullWidth(self.questionBody, self.reply);
     if (text.length) {
         self.reply.editor.string = text;

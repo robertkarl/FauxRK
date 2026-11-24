@@ -18,6 +18,8 @@
     RKAddFullWidth(identity, _name);
     RKAddFullWidth(identity, _metadata);
     [row addArrangedSubview:identity];
+    row.distribution = NSStackViewDistributionFill;
+    [identity setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
     __weak typeof(self) weak = self;
     __weak id<RKSidebarDelegate> receiver = delegate;
     [row addArrangedSubview:[RKActionButton title:@"" symbol:@"eye" help:@"Preview last screenful" tint:RKTintMuted action:^{
@@ -98,6 +100,9 @@
     }
     NSDictionary *pane = self.panes[row];
     cell.paneID = pane[@"id"];
+    NSStackView *rowView = (NSStackView *)cell.subviews.firstObject;
+    [(NSButton *)rowView.arrangedSubviews[1] setAccessibilityIdentifier:[@"preview-" stringByAppendingString:cell.paneID]];
+    [(NSButton *)rowView.arrangedSubviews[2] setAccessibilityIdentifier:[@"capture-" stringByAppendingString:cell.paneID]];
     cell.name.stringValue = [NSString stringWithFormat:@"%@  /  %@", pane[@"session"], pane[@"window"]];
     cell.name.toolTip = cell.name.stringValue;
     NSString *path = [pane[@"path"] stringByAbbreviatingWithTildeInPath] ?: @"";
