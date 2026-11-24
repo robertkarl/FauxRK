@@ -22,7 +22,12 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children);
 - (instancetype)initWithText:(NSString *)text tint:(RKTint)tint showsDot:(BOOL)showsDot;
 @end
 
+@interface RKWorkspaceView : NSView
+@property (nonatomic) BOOL disconnected;
+@end
+
 @interface RKActionButton : NSButton
+@property (nonatomic) BOOL availableOffline;
 @property (nonatomic) BOOL plainAppearance;
 @property (nonatomic) CGFloat maximumTitleWidth;
 + (instancetype)title:(NSString *)title symbol:(NSString *)symbol help:(NSString *)help tint:(RKTint)tint action:(dispatch_block_t)action;

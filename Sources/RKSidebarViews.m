@@ -166,6 +166,24 @@ static void RKFillRim(NSBezierPath *shape, NSColor *top, NSColor *bottom, NSColo
 @interface RKActionButton ()
 @property (nonatomic, copy) dispatch_block_t invoke;
 @property (nonatomic) RKTint tint;
+@property (nonatomic) BOOL disabledByAction;
+- (void)refreshAvailability;
+@end
+
+static void RKRefreshHostActions(NSView *view) {
+    if ([view isKindOfClass:RKActionButton.class]) {
+        [(RKActionButton *)view refreshAvailability];
+        return;
+    }
+    for (NSView *child in view.subviews) RKRefreshHostActions(child);
+}
+
+@implementation RKWorkspaceView
+- (void)setDisconnected:(BOOL)disconnected {
+    if (_disconnected == disconnected) return;
+    _disconnected = disconnected;
+    RKRefreshHostActions(self);
+}
 @end
 
 @implementation RKActionButton
@@ -193,7 +211,15 @@ static void RKFillRim(NSBezierPath *shape, NSColor *top, NSColor *bottom, NSColo
     return button;
 }
 
-- (void)performAction:(id)sender { if (self.invoke) self.invoke(); }
+- (void)performAction:(id)sender { if (self.window && self.enabled && self.invoke) self.invoke(); }
+- (void)setEnabled:(BOOL)enabled { self.disabledByAction = !enabled; [self refreshAvailability]; }
+- (void)setAvailableOffline:(BOOL)value { _availableOffline = value; [self refreshAvailability]; }
+- (void)viewDidMoveToWindow { [super viewDidMoveToWindow]; [self refreshAvailability]; }
+- (void)refreshAvailability {
+    RKWorkspaceView *root = (RKWorkspaceView *)self.window.contentView;
+    BOOL offline = [root isKindOfClass:RKWorkspaceView.class] && root.disconnected;
+    [super setEnabled:!self.disabledByAction && (!offline || self.availableOffline)];
+}
 - (BOOL)isPrimary { return self.tint == RKTintViolet && self.title.length && !self.plainAppearance; }
 
 - (void)setPlainAppearance:(BOOL)plain {

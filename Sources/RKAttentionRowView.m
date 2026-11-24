@@ -87,7 +87,7 @@
 }
 - (BOOL)acceptsFirstResponder { return YES; }
 - (NSView *)hitTest:(NSPoint)point { return [super hitTest:point] ? self : nil; }
-- (void)reveal:(id)sender { if (self.open) self.open(); }
+- (void)reveal:(id)sender { if (self.window && self.open) self.open(); }
 - (void)drawFocusRingMask { [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:8 yRadius:8] fill]; }
 - (NSRect)focusRingMaskBounds { return self.bounds; }
 - (void)drawRect:(NSRect)dirtyRect {
@@ -105,6 +105,7 @@
 @property(nonatomic, strong) NSDictionary *request;
 @property(nonatomic, strong) NSStackView *body;
 @property(nonatomic, strong) NSView *responses;
+@property(nonatomic, strong) RKAttentionDisclosure *disclosure;
 @end
 
 @implementation RKAttentionRowView
@@ -132,9 +133,12 @@
     ]];
     RKAttentionDisclosure *disclosure = [[RKAttentionDisclosure alloc] initWithPaneTitle:title request:request action:open];
     [disclosure setAccessibilityIdentifier:[NSString stringWithFormat:@"attention-open-%@",request[@"fingerprint"] ?: title]];
+    _disclosure = disclosure;
     RKAddFullWidth(_body, disclosure);
     return self;
 }
+
+- (void)focusForReview { [self.window makeFirstResponder:self.disclosure]; }
 
 - (void)setAnswerChoice:(void (^)(NSDictionary *))answerChoice {
     _answerChoice = [answerChoice copy];

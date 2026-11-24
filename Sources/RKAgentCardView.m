@@ -126,6 +126,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     }];
     [_disclose setAccessibilityIdentifier:[@"agent-" stringByAppendingString:_paneID]];
     _disclose.plainAppearance = YES;
+    _disclose.availableOffline = YES;
     _interruptButton = [RKActionButton title:@"" symbol:@"stop.fill" help:@"Interrupt · send Ctrl-C" tint:RKTintAmber action:^{
         [weak.delegate interruptPane:weak.paneID];
     }];
@@ -171,6 +172,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
 }
 
 - (void)toggleCard:(id)sender {
+    if (!self.window) return;
     if (self.expanded) self.expanded = NO;
     else if (self.openCard) self.openCard();
 }

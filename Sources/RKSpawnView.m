@@ -5,15 +5,21 @@
 @property (nonatomic) NSPopUpButton *presets;
 @property (nonatomic) NSPopUpButton *directories;
 @property (nonatomic) NSString *chosenPath;
+@property (nonatomic) BOOL remote;
 @property (nonatomic) RKPromptView *prompt;
 @end
 
 @implementation RKSpawnView
-- (instancetype)initWithDelegate:(id<RKSidebarDelegate>)delegate {
+- (instancetype)initWithDelegate:(id<RKSidebarDelegate>)delegate remote:(BOOL)remote {
     if (!(self = [super initWithTint:RKTintViolet])) return nil;
     _delegate = delegate;
+    _remote = remote;
     _presets = [self pickerWithTitles:@[@"Astra Medium", @"Fable Medium", @"Opus", @"Luna Medium"] label:@"Agent preset"];
-    _directories = [self pickerWithTitles:@[@"~/Code/regina/", @"~/homelab/", @"~/Code/unbiasedbob-private/", @"Choose another folder…"] label:@"Working directory"];
+    NSArray *projects = @[@"~/Code/regina/", @"~/homelab/", @"~/Code/unbiasedbob-private/"];
+    NSArray *directories = remote ? projects : [projects arrayByAddingObject:@"Choose another folder…"];
+    _directories = [self pickerWithTitles:directories label:@"Working directory"];
+    _directories.accessibilityIdentifier = @"spawn-directory";
+    _presets.accessibilityIdentifier = @"spawn-preset";
     _directories.target = self;
     _directories.action = @selector(selectDirectory:);
     _chosenPath = _directories.titleOfSelectedItem;
@@ -28,7 +34,7 @@
     [actions addArrangedSubview:RKSpring()];
     __weak typeof(self) weak = self;
     [actions addArrangedSubview:[RKActionButton title:@"Launch" symbol:@"arrow.up.right" help:@"Launch captured agent" tint:RKTintViolet action:^{
-        [weak.delegate spawnPreset:weak.presets.titleOfSelectedItem directory:weak.chosenPath.stringByExpandingTildeInPath prompt:weak.prompt.editor.string.copy];
+        [weak.delegate spawnPreset:weak.presets.titleOfSelectedItem directory:weak.remote ? weak.chosenPath : weak.chosenPath.stringByExpandingTildeInPath prompt:weak.prompt.editor.string.copy];
     }]];
     RKAddFullWidth(self.body, actions);
     return self;
@@ -49,7 +55,7 @@
     RKAddFullWidth(self.body, row);
 }
 - (void)selectDirectory:(NSPopUpButton *)sender {
-    if (sender.indexOfSelectedItem != sender.numberOfItems - 1) {
+    if (self.remote || sender.indexOfSelectedItem != sender.numberOfItems - 1) {
         self.chosenPath = sender.titleOfSelectedItem;
         return;
     }
@@ -64,12 +70,23 @@
         [self chooseProject:picker.URL.path];
     }];
 }
-- (void)chooseProject:(NSString *)directory {
+- (BOOL)chooseProject:(NSString *)directory {
+    if (self.remote) {
+        for (NSString *project in self.directories.itemTitles) {
+            NSString *withSlash = [directory hasSuffix:@"/"] ? directory : [directory stringByAppendingString:@"/"];
+            if (![project isEqual:withSlash]) continue;
+            self.chosenPath = project;
+            [self.directories selectItemWithTitle:project];
+            return YES;
+        }
+        return NO;
+    }
     self.chosenPath = directory.stringByAbbreviatingWithTildeInPath;
     if (![self.directories itemWithTitle:self.chosenPath]) {
         [self.directories insertItemWithTitle:self.chosenPath atIndex:self.directories.numberOfItems - 1];
     }
     [self.directories selectItemWithTitle:self.chosenPath];
+    return YES;
 }
 - (void)acknowledgePrompt:(NSString *)prompt {
     if (![self.prompt.editor.string isEqual:prompt]) return;

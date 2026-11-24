@@ -2,6 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 @protocol RKSidebarDelegate <NSObject>
+- (void)selectHost:(NSString *)hostID;
+- (void)retryConnection;
 - (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt;
 - (void)sortPanesByActivity;
 - (void)capturePane:(NSString *)paneID;
@@ -18,6 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithDelegate:(id<RKSidebarDelegate>)delegate;
 // All methods run on the main thread. Panes arrive in display order.
 - (void)displayPanes:(NSArray<NSDictionary *> *)panes attention:(NSDictionary<NSString *, NSDictionary *> *)attention;
+- (void)switchToHost:(NSString *)hostID;
+- (void)showDisconnectedLastSeen:(nullable NSDate *)date;
+- (void)revealAttention;
 - (void)showStatus:(NSString *)message;
 - (void)showPreview:(NSString *)text forPane:(NSString *)paneID;
 - (void)revealPane:(NSString *)paneID;

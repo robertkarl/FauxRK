@@ -24,16 +24,19 @@ static NSDictionary *Pane(NSInteger number) {
 }
 
 @interface Actions : NSObject <RKSidebarDelegate>
-@property (nonatomic) NSString *launched, *steered, *captured;
+@property (nonatomic) NSString *launched, *steered, *captured, *selectedHost, *directory;
+@property (nonatomic) NSUInteger retries, ends;
 @end
 @implementation Actions
-- (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt { self.launched = prompt; }
+- (void)selectHost:(NSString *)hostID { self.selectedHost = hostID; }
+- (void)retryConnection { self.retries++; }
+- (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt { self.launched = prompt; self.directory = directory; }
 - (void)steerPane:(NSString *)paneID text:(NSString *)text { self.steered = text; }
 - (void)capturePane:(NSString *)paneID { self.captured = paneID; }
 - (void)sortPanesByActivity {}
 - (void)previewPane:(NSString *)paneID {}
 - (void)interruptPane:(NSString *)paneID {}
-- (void)endPane:(NSString *)paneID {}
+- (void)endPane:(NSString *)paneID { self.ends++; }
 - (void)openTerminalForPane:(NSString *)paneID {}
 - (void)readAttentionForPane:(NSString *)paneID fingerprint:(NSString *)fingerprint {}
 - (void)answerPane:(NSString *)paneID fingerprint:(NSString *)fingerprint choice:(NSDictionary *)choice {}
@@ -77,6 +80,86 @@ static void RenderReferenceStates(RKSidebar *sidebar) {
     Snapshot(sidebar.window.contentView, @"reference-expanded.png");
 }
 
+static void VerifyHostSwitching(RKSidebar *sidebar, Actions *actions) {
+    NSView *local = sidebar.window.contentView;
+    [sidebar showSpawn];
+    NSTextView *oldDraft = (NSTextView *)Find(local, @"spawn-prompt");
+    oldDraft.string = @"For this Mac only.";
+    [oldDraft didChangeText];
+    NSButton *oldLaunch = (NSButton *)Find(local, @"launch");
+    NSPopUpButton *picker = (NSPopUpButton *)Find(local, @"host-picker");
+    Check([picker.itemTitles isEqual:@[@"This Mac",@"Debra"]], @"Exactly two host choices");
+    [picker selectItemWithTitle:@"Debra"];
+    [picker sendAction:picker.action to:picker.target];
+    NSView *remote = sidebar.window.contentView;
+    Check([actions.selectedHost isEqual:@"debra"] && remote != local, @"Switch selects Debra and discards the old workspace");
+    actions.launched = nil;
+    [oldLaunch performClick:nil];
+    Check(!actions.launched && !oldDraft.window, @"Detached local Draft cannot be sent to Debra");
+    [sidebar showSpawn];
+    NSTextView *draft = (NSTextView *)Find(remote, @"spawn-prompt");
+    Check(draft && !draft.string.length, @"No local draft in remote launcher");
+    NSButton *launch = (NSButton *)Find(remote, @"launch");
+    Check(!launch.enabled, @"Wait for the remote inventory before launching");
+    NSPopUpButton *projects = (NSPopUpButton *)Find(remote, @"spawn-directory");
+    Check([projects.itemTitles isEqual:@[@"~/Code/regina/",@"~/homelab/",@"~/Code/unbiasedbob-private/"]], @"Three remote directories");
+    [projects selectItemAtIndex:2];
+    [projects sendAction:projects.action to:projects.target];
+
+    NSDictionary *event = @{@"kind":@"input", @"fingerprint":@"handoff", @"summary":@"Which file?"};
+    NSDictionary *requests = @{@"%0":event};
+    NSArray *panes = @[Pane(0),Pane(1)];
+    [sidebar displayPanes:panes attention:requests];
+    [remote layoutSubtreeIfNeeded];
+    [launch performClick:nil];
+    Check([actions.directory isEqual:@"~/Code/unbiasedbob-private/"], @"Remote spawn preserves literal host-relative path");
+    [sidebar revealAttention];
+    Check([[(NSView *)sidebar.window.firstResponder accessibilityIdentifier] isEqual:@"attention-open-handoff"], @"Catch-up opens Needs attention");
+    [sidebar revealPane:@"%0"];
+    NSTextView *steer = (NSTextView *)Find(remote, @"steer-%0");
+    steer.string = @"Keep this draft on disconnect.";
+    draft.string = @"Keep remote launch draft.";
+    [steer didChangeText]; [draft didChangeText];
+    [sidebar showPreview:@"Remote preview." forPane:@"%1"];
+    NSButton *send = (NSButton *)Find(remote, @"card-send-steer-%0");
+    NSButton *capture = (NSButton *)Find(remote, @"capture-%1");
+    [sidebar showDisconnectedLastSeen:NSDate.date];
+    NSString *badge = [Find(remote, @"host-status") accessibilityValue];
+    Check([badge isEqual:@"Disconnected"] && [[(NSTextField *)Find(remote, @"host-last-seen") stringValue] containsString:@"Last seen"], @"Show last-known time while disconnected");
+    [remote layoutSubtreeIfNeeded];
+    Check(NSWidth(remote.bounds) <= 370, @"Offline chrome fits a narrow sidebar");
+    Check(!send.enabled && !launch.enabled && !capture.enabled, @"Disable sending, spawn, and capture while disconnected");
+    actions.steered = nil;
+    [send performClick:nil];
+    Check(!actions.steered, @"Disabled send never calls host");
+    NSButton *retry = (NSButton *)Find(remote, @"host-retry");
+    [retry performClick:nil];
+    Check(retry.enabled && actions.retries == 1, @"Offer explicit Retry");
+    Snapshot(remote, @"debra-offline.png");
+
+    [sidebar displayPanes:panes attention:requests];
+    Check(send.enabled && capture.enabled && launch.enabled, @"A fresh snapshot restores host actions");
+    Check(Find(remote, @"steer-%0") == steer && [steer.string hasPrefix:@"Keep this"], @"Reconnect preserves pane draft");
+    Check([draft.string isEqual:@"Keep remote launch draft."], @"Reconnect preserves spawn draft");
+    NSView *oldAttention = Find(remote, @"attention-open-handoff");
+    NSMutableDictionary *replacement = [Pane(0) mutableCopy];
+    replacement[@"target"] = @"new-generation:%0";
+    [sidebar displayPanes:@[replacement,Pane(1)] attention:requests];
+    [sidebar revealPane:@"%0"];
+    NSTextView *newDraft = (NSTextView *)Find(remote, @"steer-%0");
+    Check(newDraft != steer && !newDraft.string.length && !steer.window, @"Reused pane IDs never inherit previous agent drafts");
+    Check(Find(remote, @"attention-open-handoff") != oldAttention, @"Reused pane IDs also get fresh attention controls");
+
+    [(NSButton *)Find(remote, @"card-end-%0") performClick:nil];
+    Check(sidebar.window.sheets.count > 0, @"End confirmation is open on Debra");
+    [sidebar switchToHost:@"local"];
+    [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.05]];
+    [sidebar displayPanes:panes attention:requests];
+    Check(!sidebar.window.sheets.count && actions.ends == 0, @"Switch cancels host-bound confirmation");
+    [sidebar showSpawn];
+    projects = (NSPopUpButton *)Find(sidebar.window.contentView, @"spawn-directory");
+    Check([projects.itemTitles containsObject:@"Choose another folder…"], @"This Mac keeps local folder selection");
+}
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -138,6 +221,7 @@ int main(void) {
         NSView *longButton = Find(view, @"attention-choice-narrow-0");
         Check(longButton && NSHeight(longButton.bounds) > 24, @"Wrap a long terminal answer");
         Check(fabs(NSWidth(view.bounds) - 370) < 1, @"Answer choices must honor the requested sidebar width");
+        VerifyHostSwitching(sidebar, actions);
         [sidebar.window orderOut:nil];
         puts("sidebar fixtures passed");
     }

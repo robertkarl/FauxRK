@@ -13,6 +13,14 @@
 @interface RKSidebar ()
 @property (nonatomic, weak) id<RKSidebarDelegate> actions;
 @property (nonatomic) NSScrollView *scroll;
+@property (nonatomic, copy) NSString *hostID;
+@property (nonatomic) NSUInteger hostGeneration;
+@property (nonatomic) RKWorkspaceView *workspace;
+@property (nonatomic) NSPopUpButton *hostPicker;
+@property (nonatomic) RKActionButton *retry;
+@property (nonatomic) NSStackView *offlineDetails;
+@property (nonatomic) NSTextField *lastSeen;
+@property (nonatomic) RKPanelView *attentionPanel;
 @property (nonatomic) NSStackView *content;
 @property (nonatomic) RKBadgeView *connection;
 @property (nonatomic) NSTextField *feedback;
@@ -45,6 +53,7 @@
         backing:NSBackingStoreBuffered defer:NO];
     if (!(self = [super initWithWindow:window])) return nil;
     _actions = delegate;
+    _hostID = @"local";
     _cards = [NSMutableDictionary dictionary];
     window.title = @"RK";
     window.titlebarAppearsTransparent = YES;
@@ -69,7 +78,8 @@
 - (void)buildLayout {
     NSStackView *frame = RKColumn(0);
     frame.translatesAutoresizingMaskIntoConstraints = NO;
-    NSView *root = [NSView new];
+    self.workspace = [RKWorkspaceView new];
+    NSView *root = self.workspace;
     root.wantsLayer = YES;
     root.layer.backgroundColor = self.window.backgroundColor.CGColor;
     self.window.contentView = root;
@@ -102,7 +112,7 @@
         [self.content.topAnchor constraintEqualToAnchor:doc.topAnchor constant:3],
         [self.content.bottomAnchor constraintEqualToAnchor:doc.bottomAnchor constant:-16],
     ]];
-    self.launcher = [[RKSpawnView alloc] initWithDelegate:self.actions];
+    self.launcher = [[RKSpawnView alloc] initWithDelegate:self.actions remote:[self.hostID isEqual:@"debra"]];
     self.launcher.hidden = YES;
     RKAddFullWidth(self.content, self.launcher);
     [self buildSections];
@@ -117,18 +127,45 @@
     self.pin = [RKActionButton title:@"" symbol:@"pin" help:@"Keep on Top" tint:RKTintMuted action:^{
         [weak setPinned:weak.window.level != NSFloatingWindowLevel];
     }];
-    [top addArrangedSubview:[RKActionButton title:@"Spawn Agent" symbol:@"plus" help:@"Spawn Agent" tint:RKTintViolet action:^{
+    self.pin.availableOffline = YES;
+    RKActionButton *spawn = [RKActionButton title:@"Spawn Agent" symbol:@"plus" help:@"Spawn Agent" tint:RKTintViolet action:^{
         if (weak.launcher.hidden) [weak showSpawn]; else weak.launcher.hidden = YES;
-    }]];
+    }];
+    spawn.availableOffline = YES;
+    [top addArrangedSubview:spawn];
     RKAddFullWidth(column, top);
     self.connection = [[RKBadgeView alloc] initWithText:@"Connecting to tmux…" tint:RKTintMuted showsDot:YES];
     self.connection.neutralSurface = YES;
     NSStackView *state = RKRow(8);
+    self.hostPicker = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [self.hostPicker addItemsWithTitles:@[@"This Mac", @"Debra"]];
+    [self.hostPicker selectItemAtIndex:[self.hostID isEqual:@"debra"] ? 1 : 0];
+    self.hostPicker.controlSize = NSControlSizeSmall;
+    self.hostPicker.accessibilityIdentifier = @"host-picker";
+    self.hostPicker.accessibilityLabel = @"Computer";
+    self.hostPicker.toolTip = @"Computer whose tmux agents are shown";
+    self.hostPicker.target = self;
+    self.hostPicker.action = @selector(changeHost:);
+    [state addArrangedSubview:self.hostPicker];
+    self.connection.accessibilityIdentifier = @"host-status";
     [state addArrangedSubview:self.connection];
     [state addArrangedSubview:RKSpring()];
+    self.retry = [RKActionButton title:@"Retry" symbol:@"arrow.clockwise" help:@"Retry connection" tint:RKTintAmber action:^{
+        [weak.actions retryConnection];
+    }];
+    self.retry.availableOffline = YES;
+    self.retry.accessibilityIdentifier = @"host-retry";
     self.pin.plainAppearance = YES;
     [state addArrangedSubview:self.pin];
     RKAddFullWidth(column, state);
+    self.offlineDetails = RKRow(6);
+    self.offlineDetails.hidden = YES;
+    self.lastSeen = RKDetail(@"");
+    self.lastSeen.accessibilityIdentifier = @"host-last-seen";
+    [self.offlineDetails addArrangedSubview:self.lastSeen];
+    [self.offlineDetails addArrangedSubview:RKSpring()];
+    [self.offlineDetails addArrangedSubview:self.retry];
+    RKAddFullWidth(column, self.offlineDetails);
     self.feedback = RKDetail(@"");
     self.feedback.maximumNumberOfLines = 3;
     self.feedback.lineBreakMode = NSLineBreakByWordWrapping;
@@ -136,6 +173,48 @@
     self.feedback.textColor = RKTintColor(RKTintAmber);
     RKAddFullWidth(column, self.feedback);
     return column;
+}
+
+- (void)changeHost:(NSPopUpButton *)picker {
+    NSString *hostID = picker.indexOfSelectedItem == 1 ? @"debra" : @"local";
+    if ([hostID isEqual:self.hostID]) return;
+    [self switchToHost:hostID];
+    [self.actions selectHost:hostID];
+}
+
+- (void)switchToHost:(NSString *)hostID {
+    if (![@[@"local", @"debra"] containsObject:hostID] || [hostID isEqual:self.hostID]) return;
+    self.hostGeneration++;
+    for (NSWindow *sheet in self.window.sheets.copy) [self.window endSheet:sheet returnCode:NSModalResponseCancel];
+    [self.window makeFirstResponder:nil];
+    self.hostID = hostID;
+    [self.cards removeAllObjects];
+    self.previewID = nil;
+    self.previewTarget = nil;
+    self.attentionViews = nil;
+    self.attentionSnapshot = nil;
+    [self buildLayout];
+    [self displayPanes:@[] attention:@{}];
+    self.workspace.disconnected = YES;
+    self.connection.stringValue = @"Connecting…";
+    self.connection.tint = RKTintMuted;
+    [self setPinned:self.window.level == NSFloatingWindowLevel];
+}
+
+- (void)showDisconnectedLastSeen:(NSDate *)date {
+    self.workspace.disconnected = YES;
+    self.offlineDetails.hidden = NO;
+    self.connection.tint = RKTintAmber;
+    self.connection.stringValue = @"Disconnected";
+    NSString *stamp = date ? [NSDateFormatter localizedStringFromDate:date dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle] : nil;
+    self.lastSeen.stringValue = stamp ? [@"Last seen " stringByAppendingString:stamp] : @"Waiting for the first connection.";
+    self.lastSeen.toolTip = self.lastSeen.stringValue;
+}
+
+- (void)revealAttention {
+    [self scrollTo:self.attentionPanel];
+    RKAttentionRowView *first = self.attentionBody.arrangedSubviews.firstObject;
+    [first focusForReview];
 }
 
 - (void)setPinned:(BOOL)pinned {
@@ -189,6 +268,8 @@
 - (void)buildAttention {
     self.requestCount = [[RKBadgeView alloc] initWithText:@"0" tint:RKTintRed showsDot:NO];
     RKPanelView *panel = [self section:@"Needs attention" symbol:@"bolt.fill" tint:RKTintAmber count:self.requestCount action:nil];
+    self.attentionPanel = panel;
+    panel.accessibilityIdentifier = @"needs-attention";
     self.attentionBody = RKColumn(6);
     RKAddFullWidth(panel.body, self.attentionBody);
     self.noRequests = RKDetail(@"No requests waiting.");
@@ -205,10 +286,12 @@
     [head addArrangedSubview:[RKActionButton title:@"Capture" symbol:@"plus" help:@"Capture previewed pane" tint:RKTintBlue action:^{
         if (weak.previewID && [weak.previewTarget isEqual:weak.paneByID[weak.previewID][@"target"]]) [weak.actions capturePane:weak.previewID];
     }]];
-    [head addArrangedSubview:[RKActionButton title:@"" symbol:@"xmark" help:@"Close preview" tint:RKTintMuted action:^{
+    RKActionButton *close = [RKActionButton title:@"" symbol:@"xmark" help:@"Close preview" tint:RKTintMuted action:^{
         weak.preview.hidden = YES;
         weak.previewID = nil;
-    }]];
+    }];
+    close.availableOffline = YES;
+    [head addArrangedSubview:close];
     RKAddFullWidth(self.preview.body, head);
     self.previewText = RKLabel(@"", 12.5, NSFontWeightRegular);
     self.previewText.usesSingleLineMode = NO;
@@ -229,9 +312,11 @@
         if (pane[@"session"]) [sessions addObject:pane[@"session"]];
         [([pane[@"managed"] boolValue] ? managed : others) addObject:pane];
     }
+    self.workspace.disconnected = NO;
+    self.offlineDetails.hidden = YES;
     self.paneByID = index;
     self.requests = attention.copy;
-    self.connection.stringValue = panes.count ? [NSString stringWithFormat:@"tmux connected   (%lu session%@, %lu pane%@)", (unsigned long)sessions.count, sessions.count == 1 ? @"" : @"s", (unsigned long)panes.count, panes.count == 1 ? @"" : @"s"] : @"No local tmux sessions";
+    self.connection.stringValue = panes.count ? [NSString stringWithFormat:@"tmux · %lu session%@, %lu pane%@", (unsigned long)sessions.count, sessions.count == 1 ? @"" : @"s", (unsigned long)panes.count, panes.count == 1 ? @"" : @"s"] : @"No tmux sessions";
     self.connection.tint = panes.count ? RKTintMint : RKTintMuted;
     [self updateCards:managed];
     [self updateAttention:managed];
@@ -252,7 +337,7 @@
         NSString *paneID = pane[@"id"];
         [ids addObject:paneID];
         RKAgentCardView *card = self.cards[paneID];
-        NSString *identity = pane[@"target"] ?: paneID;
+        NSString *identity = pane[@"target"] ?: pane[@"rkID"] ?: paneID;
         if (card && ![card.identifier isEqual:identity]) card = nil;
         if (!card) {
             card = [[RKAgentCardView alloc] initWithPaneID:paneID delegate:self.actions];
@@ -280,7 +365,7 @@
         NSDictionary *request = self.requests[pane[@"id"]];
         if (!request) continue;
         NSMutableArray *section = [request[@"kind"] isEqual:@"complete"] ? results : snapshot;
-        [section addObject:@[pane[@"id"], RKPaneTitle(pane), request.copy]];
+        [section addObject:@[pane[@"id"], RKPaneTitle(pane), request.copy, pane[@"target"] ?: pane[@"rkID"] ?: pane[@"id"]]];
     }
     [snapshot addObjectsFromArray:results];
     if ([snapshot isEqual:self.attentionSnapshot]) return;
@@ -308,6 +393,7 @@
         [weak revealPane:paneID];
     }];
     row.answerChoice = ^(NSDictionary *choice) {
+        if (![weak.cards[paneID].identifier isEqual:entry[3]]) return;
         [weak.actions answerPane:paneID fingerprint:request[@"fingerprint"] choice:choice];
     };
     return row;
@@ -315,7 +401,8 @@
 
 - (void)confirmEnd:(NSString *)paneID {
     NSDictionary *pane = self.paneByID[paneID];
-    if (!pane) return;
+    if (!pane || self.workspace.disconnected) return;
+    NSUInteger generation = self.hostGeneration;
     NSAlert *alert = [NSAlert new];
     alert.alertStyle = NSAlertStyleWarning;
     alert.messageText = [NSString stringWithFormat:@"End %@?", RKPaneTitle(pane)];
@@ -324,7 +411,7 @@
     NSButton *end = [alert addButtonWithTitle:@"End Session"];
     end.hasDestructiveAction = YES;
     [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
-        if (result != NSAlertSecondButtonReturn) return;
+        if (result != NSAlertSecondButtonReturn || self.workspace.disconnected || generation != self.hostGeneration) return;
         if (![pane[@"target"] isEqual:self.paneByID[paneID][@"target"]]) {
             [self showStatus:@"The session changed while confirmation was open."];
             return;
@@ -340,7 +427,7 @@
 }
 
 - (void)showPreview:(NSString *)text forPane:(NSString *)paneID {
-    if (!self.paneByID[paneID] || [self.paneByID[paneID][@"managed"] boolValue]) return;
+    if (self.workspace.disconnected || !self.paneByID[paneID] || [self.paneByID[paneID][@"managed"] boolValue]) return;
     self.previewID = paneID;
     self.previewTarget = self.paneByID[paneID][@"target"];
     self.previewTitle.stringValue = RKPaneTitle(self.paneByID[paneID]);
@@ -350,8 +437,9 @@
 }
 
 - (void)showSpawnInProject:(NSString *)directory {
-    [self.launcher chooseProject:directory];
+    BOOL chosen = [self.launcher chooseProject:directory];
     [self showSpawn];
+    if (!chosen) [self showStatus:@"Choose one of Debra’s three project directories."];
 }
 
 - (void)showSpawn {
@@ -365,7 +453,7 @@
     card.expanded = YES;
     [self scrollTo:card];
     NSDictionary *request = self.requests[paneID];
-    if ([request[@"kind"] isEqual:@"complete"] && [request[@"fingerprint"] length]) {
+    if (!self.workspace.disconnected && [request[@"kind"] isEqual:@"complete"] && [request[@"fingerprint"] length]) {
         [self.actions readAttentionForPane:paneID fingerprint:request[@"fingerprint"]];
     }
 }
