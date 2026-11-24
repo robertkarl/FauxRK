@@ -23,8 +23,6 @@
 @property NSString *destination;
 @property BOOL connected;
 @property BOOL asleep;
-@property NSUInteger selectionGeneration;
-@property NSString *unconfirmed;
 @property NSDate *catchUpAfter;
 @property NSDate *lastSeen;
 @property NSDate *nextRetry;
@@ -151,8 +149,6 @@
     if ([selection isEqual:self.hostID]) return;
     self.hostID = selection;
     self.localHost = nil;
-    self.selectionGeneration++;
-    self.unconfirmed = nil;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     self.destination = [defaults stringForKey:@"FauxRKDebraDestination"] ?: @"debra";
     [defaults setObject:selection forKey:@"FauxRKSelectedHost"];
@@ -168,6 +164,7 @@
     [self replaceRoute];
     [self.alerts selectComputer:self.isRemote ? RKAlertsDebra : RKAlertsThisMac];
     [self.sidebar switchToHost:selection];
+    [self.sidebar showDeliveryNotice:[self deliveryNoticeForHost:selection]];
     [self refresh];
 }
 
@@ -187,7 +184,7 @@
     self.nextRetry = [NSDate dateWithTimeIntervalSinceNow:3];
     [self.sidebar showDisconnectedLastSeen:self.lastSeen];
     NSString *message = error.localizedDescription ?: @"Could not read tmux.";
-    if (![message isEqual:self.lastPollError]) [self.sidebar showStatus:self.unconfirmed ?: message];
+    if (![message isEqual:self.lastPollError]) [self.sidebar showStatus:message];
     self.lastPollError = message;
 }
 
@@ -222,7 +219,7 @@
         self.catchUpAfter = [NSDate dateWithTimeIntervalSinceNow:1.5];
         [self.alerts beginCatchUp];
     }
-    if (self.lastPollError) [self.sidebar showStatus:self.unconfirmed ?: @""];
+    if (self.lastPollError) [self.sidebar showStatus:@""];
     if (!self.connected) NSLog(@"FauxRK connected to %@ (%lu panes)", self.isRemote ? @"Debra" : @"This Mac", (unsigned long)panes.count);
     self.connected = YES;
     self.lastSeen = [NSDate date];
@@ -241,10 +238,27 @@
 
 - (void)sortPanesByActivity { self.sortRequested = YES; [self refresh]; }
 
+- (NSString *)deliveryNoticeForHost:(NSString *)hostID {
+    return [NSUserDefaults.standardUserDefaults stringForKey:[@"FauxRKUnconfirmed." stringByAppendingString:hostID]] ?: @"";
+}
+
+- (void)recordUnconfirmed:(NSString *)operation arguments:(NSDictionary *)args host:(NSString *)hostID {
+    NSString *item = args[@"preset"] ?: args[@"id"] ?: [args[@"target"] componentsSeparatedByString:@"|"].firstObject;
+    NSString *notice = [NSString stringWithFormat:@"Unconfirmed %@%@. Check the session before trying again.",
+                        operation, item.length ? [@" · " stringByAppendingString:item] : @""];
+    [NSUserDefaults.standardUserDefaults setObject:notice forKey:[@"FauxRKUnconfirmed." stringByAppendingString:hostID]];
+    if ([hostID isEqual:self.hostID]) [self.sidebar showDeliveryNotice:notice];
+}
+
+- (void)dismissDeliveryNotice {
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:[@"FauxRKUnconfirmed." stringByAppendingString:self.hostID]];
+    [self.sidebar showDeliveryNotice:@""];
+}
+
 - (void)perform:(NSString *)operation arguments:(NSDictionary *)args then:(void (^)(id))finished {
     RKRoute *route = self.route;
     if (!self.connected || route.retired) return;
-    NSUInteger selection = self.selectionGeneration;
+    NSString *computer = self.hostID;
     dispatch_async(route.queue, ^{
         if (route.retired) return;
         NSError *error = nil;
@@ -252,17 +266,9 @@
         BOOL lost = [error.domain isEqual:RKTransportErrorDomain];
         if (lost) route.retired = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (selection != self.selectionGeneration) return;
-            if (lost && error.code == 2) {
-                self.unconfirmed = error.localizedDescription;
-                [self.sidebar showStatus:self.unconfirmed];
-            }
+            if (lost && error.code == 2) [self recordUnconfirmed:operation arguments:args host:computer];
             if (self.route != route) return;
             if (lost) { [self lostConnection:error]; return; }
-            if (result && self.unconfirmed && ![operation isEqual:@"attach"] && ![operation isEqual:@"read"]) {
-                self.unconfirmed = nil;
-                [self.sidebar showStatus:@""];
-            }
             if (!result) [self.sidebar showStatus:error.localizedDescription ?: @"The operation did not complete."];
             if (finished) finished(result);
             [self refresh];
@@ -296,8 +302,9 @@
         NSError *error = nil;
         NSString *text = [route.host request:@"preview" arguments:@{@"target":target} error:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (route != self.route || generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
+            if (route != self.route) return;
             if ([error.domain isEqual:RKTransportErrorDomain]) { [self lostConnection:error]; return; }
+            if (generation != self.previewGeneration || ![self.targets[paneID] isEqual:target]) return;
             if (text) [self.sidebar showPreview:text forPane:paneID];
             else [self.sidebar showStatus:error.localizedDescription ?: @"Preview unavailable."];
         });

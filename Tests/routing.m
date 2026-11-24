@@ -8,6 +8,7 @@
 - (void)steerPane:(NSString *)paneID text:(NSString *)text;
 - (void)willSleep:(NSNotification *)notification;
 - (void)didWake:(NSNotification *)notification;
+- (void)dismissDeliveryNotice;
 @end
 
 @interface FixtureHost : NSObject <RKHost>
@@ -47,6 +48,7 @@
 
 @interface FixtureSidebar : NSObject
 @property NSString *status;
+@property NSString *notice;
 @property NSString *displayed;
 @property NSUInteger displayedSnapshots;
 @property NSUInteger acknowledgements;
@@ -58,6 +60,7 @@
     self.displayed = [panes.firstObject objectForKey:@"target"];
     self.displayedSnapshots++;
 }
+- (void)showDeliveryNotice:(NSString *)notice { self.notice = notice; }
 - (void)showStatus:(NSString *)status { self.status = status; }
 - (void)didSendText:(NSString *)text forPane:(NSString *)pane { self.acknowledgements++; }
 @end
@@ -109,12 +112,14 @@ int main(void) {
         [app didWake:nil];
         waitFor(^BOOL{ return [sidebar.displayed isEqual:reconnected.identity]; });
         dispatch_semaphore_signal(remote.resume);
-        waitFor(^BOOL{ return [sidebar.status isEqual:@"Delivery unconfirmed"]; });
+        waitFor(^BOOL{ return [sidebar.notice containsString:@"Unconfirmed steer"]; });
         NSCAssert(remote.sends == 1 && reconnected.sends == 0 && sidebar.acknowledgements == 0,
                   @"Queued or unconfirmed send replayed or cleared a draft");
         [app steerPane:@"%0" text:@"explicit new send"];
         waitFor(^BOOL{ return sidebar.acknowledgements == 1; });
-        NSCAssert(reconnected.sends == 1, @"New explicit send was not delivered");
+        NSCAssert(reconnected.sends == 1 && sidebar.notice.length, @"New explicit send lost the prior warning");
+        [app dismissDeliveryNotice];
+        NSCAssert(!sidebar.notice.length, @"Dismiss unconfirmed warning");
     }
     puts("host routing passed (late snapshots, queued commands, sleep, uncertain delivery)");
 }
