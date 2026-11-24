@@ -17,3 +17,8 @@
 - [ ] With the Mac unlocked, check the system microphone and notification permission prompts, F10 with a physical microphone, and notification delivery while switching between real agent windows.
 
 Continue from git status and this list. Scratch builds, review logs, and smoke-test outputs belong under the ignored build/ directory. The Mac was locked during UI verification. AppKit renders and responder tests passed. The test run also left a trust entry for a disposable Claude workspace in local Claude settings.
+
+## Dashboard visual update
+
+- [x] Match compact and expanded cards, the tmux inventory, and attention items to the original mockups. Check narrow layout, responder stability, and direct blocker choices.
+- [x] Review both icon concepts on the laptop. Icon selection is deferred.
