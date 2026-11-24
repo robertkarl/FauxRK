@@ -13,6 +13,15 @@ static NSError *RKSSHError(NSString *description) {
     return [NSError errorWithDomain:RKTransportErrorDomain code:1 userInfo:@{NSLocalizedDescriptionKey:description}];
 }
 
+// read(2) returns each available pipe fragment; Foundation's length-based
+// file reads can wait for the full requested byte count on a live pipe.
+static NSData *readChunk(NSFileHandle *handle) {
+    uint8_t bytes[32768];
+    ssize_t count;
+    do { count = read(handle.fileDescriptor,bytes,sizeof(bytes)); } while (count < 0 && errno == EINTR);
+    return count > 0 ? [NSData dataWithBytes:bytes length:(NSUInteger)count] : nil;
+}
+
 static NSString *shellQuoted(NSString *s) {
     return [NSString stringWithFormat:@"'%@'", [s stringByReplacingOccurrencesOfString:@"'" withString:@"'\\''"]];
 }
@@ -144,7 +153,7 @@ static NSString *installCommand(NSData *binary) {
             NSMutableData *tail = [NSMutableData data];
             while (YES) {
                 @autoreleasepool {
-                    NSData *data = [diagnostics.fileHandleForReading readDataUpToLength:4096 error:nil];
+                    NSData *data = readChunk(diagnostics.fileHandleForReading);
                     if (!data.length) break;
                     [tail appendData:data];
                     if (tail.length > 2048) [tail replaceBytesInRange:NSMakeRange(0,tail.length-2048) withBytes:NULL length:0];
@@ -156,7 +165,7 @@ static NSString *installCommand(NSData *binary) {
         NSMutableData *buffer = [NSMutableData data];
         while (YES) {
             @autoreleasepool {
-                NSData *chunk = [output.fileHandleForReading readDataUpToLength:32768 error:&error];
+                NSData *chunk = readChunk(output.fileHandleForReading);
                 if (!chunk.length) break;
                 [buffer appendData:chunk];
                 if (![self consumeLines:buffer]) break;
