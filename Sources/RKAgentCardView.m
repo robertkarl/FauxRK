@@ -1,7 +1,6 @@
 #import "RKAgentCardView.h"
 
-NSString *RKPaneTitle(NSDictionary *pane) {
-    if ([pane[@"capturedLabel"] length]) return pane[@"capturedLabel"];
+static NSString *ContextTitle(NSDictionary *pane) {
     NSString *title = [pane[@"title"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *window = pane[@"window"] ?: @"";
     static NSSet<NSString *> *generic;
@@ -17,6 +16,10 @@ NSString *RKPaneTitle(NSDictionary *pane) {
     if (folder.length) return folder;
     if ([pane[@"session"] length]) return pane[@"session"];
     return title.length ? title : @"Agent";
+}
+
+NSString *RKPaneTitle(NSDictionary *pane) {
+    return [pane[@"capturedLabel"] length] ? pane[@"capturedLabel"] : ContextTitle(pane);
 }
 
 NSString *RKRequestKind(NSDictionary *request) {
@@ -329,7 +332,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     }
     self.name.toolTip = name;
     NSString *detail = [pane[@"preset"] length] ? pane[@"preset"] : pane[@"command"];
-    if ([pane[@"capturedLabel"] length] && [pane[@"title"] length]) detail = pane[@"title"];
+    if ([pane[@"capturedLabel"] length]) detail = ContextTitle(pane);
     self.metadata.stringValue = detail ?: @"";
     self.metadata.toolTip = self.metadata.stringValue;
     RKTint tint = RKRequestTint(request);
