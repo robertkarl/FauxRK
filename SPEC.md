@@ -20,3 +20,9 @@ RK is a local macOS sidebar for talking to terminal agents. Build its native UI 
 - [x] A lost connection retains the last snapshot, last-seen time, and drafts. Sending is disabled until reconnect, and an interrupted submission is reported as unconfirmed and never automatically resent.
 - [x] On reconnect, outstanding handoffs produce at most one catch-up notification. Live handoffs afterward notify individually.
 - [x] The native bundle displays the FauxRK name and the selected four-tine fork icon while retaining local RK preferences and tmux ownership markers.
+
+## Capture names
+
+- Capture keeps the session and window label the user saw in Other tmux panes. Cards, attention rows and individual notifications use that label after capture and reconnect.
+- The dedicated tmux session reuses the source session name when available. If another window still needs that name, the new session includes the original session and window names with a readable disambiguator if necessary.
+- Capture preserves the live pane, its process and the window name. Spawning and existing captures without recorded names keep their current behavior.

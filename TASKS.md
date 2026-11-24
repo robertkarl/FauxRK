@@ -33,3 +33,8 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 - [x] Exercise simultaneous remote terminal attachments and stale-session refusal in real PTYs. Verify that a stalled iTerm Automation check leaves the attention poll responsive.
 - [ ] On the laptop desktop, press **Open in New Window** twice for one captured Debra agent and confirm two iTerm2 windows. The signed GUI test reached the macOS Automation consent prompt and timed out before a client attached.
 - [x] Pass the Opus release review and independent recheck, run the full suite, and prepare the verified laptop build for publication.
+
+## Capture names
+
+- [ ] Verify recognizable names for isolated and shared sessions, literal tmux names, and existing captures.
+- [ ] Restore the reported session’s recognizable name, review the change, and deliver the laptop build.
