@@ -17,6 +17,8 @@ NSString *const RKAlertsDebra = @"Debra";
 @property NSDictionary<NSString *, NSString *> *live;
 @property NSDictionary<NSString *, NSString *> *summarized;
 @property BOOL catchUp;
+@property BOOL postingSummary;
+@property NSUInteger catchUpCycle;
 @property BOOL requested;
 @property BOOL resolved;
 @property BOOL authorized;
@@ -51,6 +53,7 @@ NSString *const RKAlertsDebra = @"Debra";
     self.live = @{};
     self.summarized = @{};
     self.catchUp = NO;
+    self.postingSummary = NO;
 }
 
 - (NSString *)notificationID:(NSString *)identity {
@@ -68,7 +71,7 @@ NSString *const RKAlertsDebra = @"Debra";
     [self loadComputer:computer];
 }
 
-- (void)beginCatchUp { self.catchUp = YES; }
+- (void)beginCatchUp { self.catchUp = YES; self.catchUpCycle++; }
 
 - (void)authorize {
     if (self.requested) return;
@@ -122,8 +125,9 @@ NSString *const RKAlertsDebra = @"Debra";
     } done:^{ [weakSelf.pending removeObject:identity]; }];
 }
 
-// Folds every eligible outstanding request into one summary. Returns NO while authorization is still unresolved.
+// A catch-up stays active until it is acknowledged, consumed in front, or has no eligible requests.
 - (BOOL)catchUpPanes:(NSArray<NSDictionary *> *)waiting attention:(NSDictionary *)rows {
+    if (self.postingSummary) return NO;
     NSMutableDictionary *backlog = [NSMutableDictionary dictionary];
     NSUInteger decisions = 0, results = 0;
     for (NSDictionary *pane in waiting) {
@@ -133,9 +137,13 @@ NSString *const RKAlertsDebra = @"Debra";
         if ([row[@"kind"] isEqual:@"complete"]) results++; else decisions++;
     }
     if (backlog.count && !self.resolved) return NO;
-    [self.delivered addEntriesFromDictionary:backlog];
-    if (backlog.count) [self saveDelivered];
-    if (!backlog.count || !self.authorized || self.foreground()) return YES;
+    if (!backlog.count || !self.authorized) return YES;
+    if (self.foreground()) {
+        // The sidebar already brought these rows back into view.
+        [self.delivered addEntriesFromDictionary:backlog];
+        [self saveDelivered];
+        return YES;
+    }
     NSMutableArray *parts = [NSMutableArray array];
     if (decisions) [parts addObject:[NSString stringWithFormat:@"%lu %@", (unsigned long)decisions, decisions == 1 ? @"decision" : @"decisions"]];
     if (results) [parts addObject:[NSString stringWithFormat:@"%lu %@", (unsigned long)results, results == 1 ? @"result" : @"results"]];
@@ -143,10 +151,26 @@ NSString *const RKAlertsDebra = @"Debra";
     content.title = [NSString stringWithFormat:@"Reconnected to %@", self.computer];
     content.body = [[parts componentsJoinedByString:@" and "] stringByAppendingString:@" waiting"];
     content.userInfo = @{@"catchUp":@YES, @"computer":self.computer};
-    self.summarized = backlog;
+    self.postingSummary = YES;
+    NSUInteger cycle = self.catchUpCycle;
     __weak typeof(self) weakSelf = self;
-    [self post:self.summaryID content:content fresh:^BOOL{ return [weakSelf summaryLive]; } done:nil];
-    return YES;
+    [self post:self.summaryID content:content fresh:^BOOL{
+        __strong typeof(weakSelf) self = weakSelf;
+        // Only this success path may record delivery. A failed add leaves
+        // catchUp set; the next poll retries one summary for the current backlog.
+        NSMutableDictionary *remaining = [NSMutableDictionary dictionary];
+        [backlog enumerateKeysAndObjectsUsingBlock:^(NSString *identity, NSString *fingerprint, BOOL *stop) {
+            if ([self.live[identity] isEqual:fingerprint]) remaining[identity] = fingerprint;
+        }];
+        if (self.catchUpCycle == cycle) self.catchUp = NO;
+        self.summarized = remaining;
+        if (remaining.count) {
+            [self.delivered addEntriesFromDictionary:remaining];
+            [self saveDelivered];
+        }
+        return remaining.count > 0 && !self.foreground();
+    } done:^{ weakSelf.postingSummary = NO; }];
+    return NO;
 }
 
 - (BOOL)summaryLive {

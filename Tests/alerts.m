@@ -44,6 +44,13 @@ static void Drain(void) { [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWit
     completion(nil);
     Drain();
 }
+- (void)failAdd:(NSString *)identity {
+    void (^completion)(NSError *) = self.adding[identity];
+    Check(completion != nil, @"No pending notification to fail");
+    [self.adding removeObjectForKey:identity];
+    completion([NSError errorWithDomain:@"test.notifications" code:1 userInfo:nil]);
+    Drain();
+}
 - (void)removeDeliveredNotificationsWithIdentifiers:(NSArray *)identifiers {
     [self.delivered minusSet:[NSSet setWithArray:identifiers]];
 }
@@ -146,6 +153,36 @@ static void RemoteCatchUp(NSUserDefaults *defaults) {
     Check(![center.delivered containsObject:@"r-B"], @"Switching back removes the local banner");
 }
 
+static void FailedCatchUp(NSUserDefaults *defaults) {
+    FakeCenter *center = [FakeCenter new];
+    RKAlerts *alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity){} center:(id)center
+                                             defaults:defaults foreground:^BOOL{ return NO; }];
+    [alerts selectComputer:RKAlertsDebra];
+    [alerts beginCatchUp];
+    NSArray *panes = @[Pane(@"%1",@"retry-A",NO), Pane(@"%2",@"retry-B",NO)];
+    NSDictionary *rows = @{@"%1":Kind(@"a",@"input"), @"%2":Kind(@"b",@"complete")};
+    [alerts updatePanes:panes attention:rows];
+    Drain();
+    [alerts updatePanes:panes attention:rows];
+    [alerts updatePanes:panes attention:rows];
+    Check(center.posts.count == 1, @"Waiting for the summary acknowledgement suppresses duplicates");
+    Check(![defaults dictionaryForKey:@"RKAlertState.Debra"][@"retry-A"], @"A pending summary is not a receipt");
+    [center failAdd:@"RKCatchUp.Debra"];
+    Check(![defaults dictionaryForKey:@"RKAlertState.Debra"][@"retry-A"], @"A failed summary is not a receipt");
+    [alerts updatePanes:panes attention:rows];
+    Check(center.posts.count == 2 && [center.posts.lastObject.identifier isEqual:@"RKCatchUp.Debra"],
+          @"Failed catch-up retries once as a summary");
+    NSDictionary *changed = @{@"%1":Kind(@"a",@"input"), @"%2":Kind(@"new-b",@"input")};
+    [alerts updatePanes:panes attention:changed];
+    [center finishAdd:@"RKCatchUp.Debra"];
+    NSDictionary *saved = [defaults dictionaryForKey:@"RKAlertState.Debra"];
+    Check([saved[@"retry-A"] isEqual:@"a"] && !saved[@"retry-B"], @"A receipt covers only still-current fingerprints");
+    [alerts updatePanes:panes attention:changed];
+    Check(center.posts.count == 3 && [center.posts.lastObject.identifier isEqual:@"Debra:retry-B"],
+          @"New event arriving during catch-up posts individually after acknowledgement");
+    [center finishAdd:@"Debra:retry-B"];
+}
+
 int main(void) {
     @autoreleasepool {
         NSString *suite = [@"RK.notification.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
@@ -204,6 +241,7 @@ int main(void) {
         [quiet updatePanes:panes attention:rows];
         Check(denied.prompts == 1 && !denied.posts.count, @"Denied authorization never posts");
         RemoteCatchUp(defaults);
+        FailedCatchUp(defaults);
         [defaults removePersistentDomainForName:suite];
         puts("notification fixtures passed");
     }
