@@ -1,7 +1,7 @@
 APP := build/RK.app
 SOURCES := $(wildcard Sources/*.m)
 HEADERS := $(wildcard Sources/*.h)
-FRAMEWORKS := -framework Cocoa -framework AVFoundation -framework AudioToolbox -framework UserNotifications
+FRAMEWORKS := -framework Cocoa -framework ApplicationServices -framework AVFoundation -framework AudioToolbox -framework UserNotifications
 SIGN_ID ?= -
 .PHONY: all run install test
 all: $(APP)/Contents/MacOS/RK

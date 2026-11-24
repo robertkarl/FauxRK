@@ -2,7 +2,7 @@
 int main(int argc, const char **argv) {
     @autoreleasepool {
         NSApplication *app = NSApplication.sharedApplication;
-        RKApp *delegate = [RKApp new];
+        __attribute__((objc_precise_lifetime)) RKApp *delegate = [RKApp new];
         app.delegate = delegate;
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
         [app run];
