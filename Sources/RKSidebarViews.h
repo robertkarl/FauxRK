@@ -24,6 +24,7 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children);
 
 @interface RKActionButton : NSButton
 @property (nonatomic) BOOL plainAppearance;
+@property (nonatomic) CGFloat maximumTitleWidth;
 + (instancetype)title:(NSString *)title symbol:(NSString *)symbol help:(NSString *)help tint:(RKTint)tint action:(dispatch_block_t)action;
 @end
 

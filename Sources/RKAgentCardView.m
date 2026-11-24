@@ -391,6 +391,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     RKActionButton *button = [RKActionButton title:choice[@"label"] ?: @"Respond" symbol:nil help:choice[@"label"] tint:RKTintBlue action:^{
         [weak.delegate answerPane:weak.paneID fingerprint:fingerprint choice:choice];
     }];
+    button.maximumTitleWidth = 210;
     button.accessibilityIdentifier = [NSString stringWithFormat:@"card-choice-%@-%lu", self.paneID, (unsigned long)index];
     [self labelControl:button action:button.title];
     button.lineBreakMode = NSLineBreakByTruncatingTail;

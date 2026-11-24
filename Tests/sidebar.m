@@ -127,6 +127,17 @@ int main(void) {
         Snapshot(view, @"spawn.png");
         [sidebar didSpawnWithPrompt:spawn.string];
         RenderReferenceStates(sidebar);
+        [sidebar.window setFrameAutosaveName:@""];
+        NSString *longChoice = @"Install the runtime dependency and apply the new configuration to every selected target";
+        NSDictionary *menu = @{@"kind":@"input", @"fingerprint":@"narrow", @"question":@"Apply changes?",
+            @"choiceSource":@"terminal", @"choices":@[@{@"label":longChoice}, @{@"label":@"No"}]};
+        [sidebar displayPanes:@[Pane(0)] attention:@{@"%0":menu}];
+        [sidebar.window setContentSize:NSMakeSize(370,680)];
+        [view layoutSubtreeIfNeeded];
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.1]];
+        NSView *longButton = Find(view, @"attention-choice-narrow-0");
+        Check(longButton && NSHeight(longButton.bounds) > 24, @"Wrap a long terminal answer");
+        Check(fabs(NSWidth(view.bounds) - 370) < 1, @"Answer choices must honor the requested sidebar width");
         [sidebar.window orderOut:nil];
         puts("sidebar fixtures passed");
     }

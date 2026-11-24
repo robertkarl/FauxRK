@@ -160,6 +160,7 @@
         }];
         [button setAccessibilityIdentifier:[NSString stringWithFormat:@"attention-choice-%@-%lu",
             self.request[@"fingerprint"] ?: self.paneTitle, (unsigned long)buttons.count]];
+        button.maximumTitleWidth = 210;
         button.keyEquivalent = @"";
         button.lineBreakMode = NSLineBreakByTruncatingTail;
         button.toolTip = label;
@@ -173,6 +174,8 @@
         if (inlineLayout) {
             [actions addArrangedSubview:button];
         } else {
+            [button setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+            [button setContentCompressionResistancePriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
             RKAddFullWidth(actions, button);
         }
     }

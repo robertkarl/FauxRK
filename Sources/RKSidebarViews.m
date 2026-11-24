@@ -202,9 +202,24 @@ static void RKFillRim(NSBezierPath *shape, NSColor *top, NSColor *bottom, NSColo
     self.needsDisplay = YES;
 }
 
+- (void)setMaximumTitleWidth:(CGFloat)width {
+    _maximumTitleWidth = width;
+    [self invalidateIntrinsicContentSize];
+    self.needsDisplay = YES;
+}
+
+- (NSRect)wrappedTitle:(CGFloat)width attributes:(NSDictionary *)attributes {
+    return [self.title boundingRectWithSize:NSMakeSize(width, CGFLOAT_MAX)
+        options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading attributes:attributes];
+}
+
 - (NSSize)intrinsicContentSize {
     if (!self.title.length) return NSMakeSize(self.plainAppearance ? 17 : 28, 24);
     CGFloat width = ceil([self.title sizeWithAttributes:@{NSFontAttributeName:self.font}].width);
+    if (self.maximumTitleWidth > 0 && width > self.maximumTitleWidth) {
+        NSRect text = [self wrappedTitle:self.maximumTitleWidth attributes:@{NSFontAttributeName:self.font}];
+        return NSMakeSize(self.maximumTitleWidth + 16, ceil(NSHeight(text)) + 9);
+    }
     return NSMakeSize(width + (self.image ? 18 : 0) + (self.isPrimary ? 22 : 16), self.isPrimary ? 27 : 24);
 }
 
@@ -238,6 +253,16 @@ static void RKFillRim(NSBezierPath *shape, NSColor *top, NSColor *bottom, NSColo
     style.lineBreakMode = NSLineBreakByTruncatingTail;
     NSDictionary *attributes = @{NSFontAttributeName:self.font, NSForegroundColorAttributeName:ink, NSParagraphStyleAttributeName:style};
     NSSize title = [self.title sizeWithAttributes:attributes];
+    if (self.maximumTitleWidth > 0 && title.width > self.maximumTitleWidth) {
+        style.lineBreakMode = NSLineBreakByWordWrapping;
+        style.alignment = NSTextAlignmentCenter;
+        CGFloat wrap = MAX(1, MIN(self.maximumTitleWidth, NSWidth(bounds) - 12));
+        CGFloat height = ceil(NSHeight([self wrappedTitle:wrap attributes:attributes]));
+        NSRect rect = NSMakeRect(floor(NSMidX(bounds)-wrap/2), floor(NSMidY(bounds)-height/2), wrap, height);
+        [self.title drawWithRect:rect options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+            attributes:attributes];
+        return;
+    }
     CGFloat textWidth = MIN(ceil(title.width), MAX(0, NSWidth(bounds) - icon - gap - 12));
     CGFloat x = floor(NSMidX(bounds) - (textWidth + gap + icon) / 2);
     if (icon) {
