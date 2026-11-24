@@ -1,16 +1,26 @@
 #import "RKAgentCardView.h"
 
 NSString *RKPaneTitle(NSDictionary *pane) {
-    for (NSString *field in @[@"title", @"window", @"session", @"command", @"id"]) {
-        NSString *value = pane[field];
-        if (value.length) return value;
-    }
-    return @"Agent";
+    NSString *title = [pane[@"title"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *window = pane[@"window"] ?: @"";
+    static NSSet<NSString *> *generic;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *host = NSProcessInfo.processInfo.hostName.lowercaseString ?: @"";
+        generic = [NSSet setWithArray:@[@"",@"zsh",@"sh",@"bash",@"login",@"fish",@"node",@"codex",@"claude",@"claude.exe",
+            @"agent",@"astra-medium",@"luna-medium",@"fable-medium",@"opus",host,host.stringByDeletingPathExtension]];
+    });
+    if (title.length && ![generic containsObject:title.lowercaseString]) return title;
+    if (window.length && ![generic containsObject:window.lowercaseString]) return window;
+    NSString *folder = [pane[@"path"] lastPathComponent];
+    if (folder.length) return folder;
+    if ([pane[@"session"] length]) return pane[@"session"];
+    return title.length ? title : @"Agent";
 }
 
 NSString *RKRequestKind(NSDictionary *request) {
     NSDictionary *names = @{@"input":@"Needs input", @"maybe":@"May need input", @"complete":@"Turn complete"};
-    return names[request[@"kind"] ?: @""] ?: @"Managed";
+    return names[request[@"kind"] ?: @""] ?: @"Captured";
 }
 
 RKTint RKRequestTint(NSDictionary *request) {
@@ -29,14 +39,52 @@ static NSTextField *WrappedLabel(CGFloat size) {
     return label;
 }
 
+static RKTint AgentTint(NSDictionary *pane) {
+    // The rail identifies a card even when its attention state changes.
+    unsigned long long value = [[pane[@"id"] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"%"]] integerValue];
+    NSUUID *identity = [[NSUUID alloc] initWithUUIDString:pane[@"rkID"] ?: @""];
+    if (identity) {
+        uuid_t bytes;
+        [identity getUUIDBytes:bytes];
+        value = bytes[0];
+    }
+    static RKTint const colors[] = {RKTintMint, RKTintBlue, RKTintViolet};
+    return colors[value % 3];
+}
+
+static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
+    NSImageView *icon = [NSImageView imageViewWithImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil]];
+    icon.contentTintColor = RKTintColor(RKTintMuted);
+    [icon setAccessibilityElement:NO];
+    [icon.widthAnchor constraintEqualToConstant:14].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:13].active = YES;
+    NSStackView *captionRow = RKRow(5);
+    [captionRow addArrangedSubview:icon];
+    [captionRow addArrangedSubview:RKDetail(caption)];
+    NSStackView *column = RKColumn(4);
+    [column addArrangedSubview:captionRow];
+    RKAddFullWidth(column, value);
+    return column;
+}
+
 @interface RKAgentCardView ()
 @property (nonatomic, weak) id<RKSidebarDelegate> delegate;
 @property (nonatomic) RKActionButton *disclose;
 @property (nonatomic) RKActionButton *steerButton;
 @property (nonatomic) NSTextField *name;
 @property (nonatomic) NSTextField *metadata;
-@property (nonatomic) NSTextField *status;
-@property (nonatomic) NSTextField *location;
+@property (nonatomic) RKBadgeView *status;
+@property (nonatomic) RKActionButton *interruptButton;
+@property (nonatomic) RKActionButton *endButton;
+@property (nonatomic) NSStackView *titleColumn;
+@property (nonatomic) NSView *header;
+@property (nonatomic) NSView *controls;
+@property (nonatomic) NSArray<NSLayoutConstraint *> *wideConstraints;
+@property (nonatomic) NSLayoutConstraint *narrowConstraint;
+@property (nonatomic) NSStackView *subtitle;
+@property (nonatomic) BOOL wrappedHeader;
+@property (nonatomic) NSTextField *folder;
+@property (nonatomic) NSTextField *session;
 @property (nonatomic) NSTextField *result;
 @property (nonatomic) NSStackView *detail;
 @property (nonatomic) NSStackView *questionBody;
@@ -52,13 +100,20 @@ static NSTextField *WrappedLabel(CGFloat size) {
     if (!(self = [super initWithTint:RKTintMint])) return nil;
     _paneID = [paneID copy];
     _delegate = delegate;
-    _name = RKLabel(@"", 14, NSFontWeightSemibold);
-    _status = RKDetail(@"");
+    _name = WrappedLabel(15.5);
+    _name.selectable = NO;
+    _name.font = [NSFont systemFontOfSize:15.5 weight:NSFontWeightBold];
+    [_name setAccessibilityIdentifier:[@"agent-name-" stringByAppendingString:paneID]];
+    _status = [[RKBadgeView alloc] initWithText:@"Captured" tint:RKTintMint showsDot:YES];
+    [_status setAccessibilityIdentifier:[@"agent-status-" stringByAppendingString:paneID]];
     _metadata = RKDetail(@"");
-    _detail = RKColumn(9);
+    [_metadata setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
+    _detail = RKColumn(10);
+    self.body.spacing = 12;
     _detail.hidden = YES;
     [self buildHeader];
     [self buildExpandedBody];
+    self.expanded = NO;
     return self;
 }
 
@@ -69,32 +124,139 @@ static NSTextField *WrappedLabel(CGFloat size) {
         else if (weak.openCard) weak.openCard();
     }];
     [_disclose setAccessibilityIdentifier:[@"agent-" stringByAppendingString:_paneID]];
-    NSStackView *row = RKRow(6);
-    [row addArrangedSubview:_disclose];
-    [row addArrangedSubview:_name];
-    [row addArrangedSubview:RKSpring()];
-    [row addArrangedSubview:[RKActionButton title:@"" symbol:@"stop.fill" help:@"Interrupt · send Ctrl-C" tint:RKTintAmber action:^{
+    _disclose.plainAppearance = YES;
+    _interruptButton = [RKActionButton title:@"" symbol:@"stop.fill" help:@"Interrupt · send Ctrl-C" tint:RKTintAmber action:^{
         [weak.delegate interruptPane:weak.paneID];
-    }]];
-    [row addArrangedSubview:[RKActionButton title:@"" symbol:@"xmark" help:@"End session…" tint:RKTintRed action:^{
+    }];
+    _endButton = [RKActionButton title:@"" symbol:@"xmark" help:@"End session…" tint:RKTintRed action:^{
         if (weak.requestEnd) weak.requestEnd();
-    }]];
-    RKAddFullWidth(self.body, row);
-    NSStackView *info = RKRow(8);
-    [info addArrangedSubview:_status];
-    [info addArrangedSubview:_metadata];
-    RKAddFullWidth(self.body, info);
+    }];
+    NSStackView *controls = RKRow(5);
+    [controls addArrangedSubview:_interruptButton];
+    [controls addArrangedSubview:_endButton];
+    _titleColumn = RKColumn(3);
+    RKAddFullWidth(_titleColumn, _name);
+    _subtitle = RKRow(7);
+    [_subtitle addArrangedSubview:_metadata];
+    RKAddFullWidth(_titleColumn, _subtitle);
+    [_titleColumn setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [_titleColumn setContentCompressionResistancePriority:250 forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [_status setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [_status setContentCompressionResistancePriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    _header = [NSView new];
+    _controls = controls;
+    for (NSView *view in @[_disclose,_titleColumn,_status,controls]) {
+        view.translatesAutoresizingMaskIntoConstraints = NO;
+        [_header addSubview:view];
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [_disclose.leadingAnchor constraintEqualToAnchor:_header.leadingAnchor],
+        [_disclose.centerYAnchor constraintEqualToAnchor:_header.centerYAnchor],
+        [_titleColumn.leadingAnchor constraintEqualToAnchor:_disclose.trailingAnchor constant:6],
+        [_titleColumn.topAnchor constraintEqualToAnchor:_header.topAnchor],
+        [_titleColumn.bottomAnchor constraintEqualToAnchor:_header.bottomAnchor],
+        [controls.trailingAnchor constraintEqualToAnchor:_header.trailingAnchor],
+        [controls.centerYAnchor constraintEqualToAnchor:_header.centerYAnchor],
+        [controls.topAnchor constraintGreaterThanOrEqualToAnchor:_header.topAnchor],
+        [controls.widthAnchor constraintEqualToConstant:_interruptButton.intrinsicContentSize.width + _endButton.intrinsicContentSize.width + controls.spacing]
+    ]];
+    _narrowConstraint = [controls.leadingAnchor constraintEqualToAnchor:_titleColumn.trailingAnchor constant:8];
+    [self layOutWideStatus];
+    RKAddFullWidth(self.body, _header);
+    // The name is also a large disclosure target, adjacent to the chevron.
+    [_name addGestureRecognizer:[[NSClickGestureRecognizer alloc] initWithTarget:self action:@selector(toggleCard:)]];
+}
+
+- (void)toggleCard:(id)sender {
+    if (self.expanded) self.expanded = NO;
+    else if (self.openCard) self.openCard();
+}
+
+- (void)layOutWideStatus {
+    if (self.status.superview != self.header) [self.header addSubview:self.status];
+    self.status.translatesAutoresizingMaskIntoConstraints = NO;
+    self.wideConstraints = @[
+        [self.status.leadingAnchor constraintEqualToAnchor:self.titleColumn.trailingAnchor constant:8],
+        [self.status.trailingAnchor constraintEqualToAnchor:self.controls.leadingAnchor constant:-8],
+        [self.status.centerYAnchor constraintEqualToAnchor:self.header.centerYAnchor]
+    ];
+    [NSLayoutConstraint activateConstraints:self.wideConstraints];
+}
+
+- (void)layout {
+    [super layout];
+    if (self.bounds.size.width <= 0) return;
+    BOOL compact = self.bounds.size.width < 380;
+    if (compact != self.wrappedHeader) {
+        self.wrappedHeader = compact;
+        if (compact) {
+            [NSLayoutConstraint deactivateConstraints:self.wideConstraints];
+            [self.status removeFromSuperview];
+            [self.subtitle addArrangedSubview:self.status];
+            self.narrowConstraint.active = YES;
+        } else {
+            self.narrowConstraint.active = NO;
+            [self.status removeFromSuperview];
+            [self layOutWideStatus];
+        }
+    }
+    // NSTextField can determine wrapping height once the stack allocates
+    // the available width (including after a sidebar resize).
+    for (NSTextField *label in @[self.name,self.folder,self.session]) {
+        CGFloat width = NSWidth(label.bounds);
+        if (width > 10 && fabs(label.preferredMaxLayoutWidth-width) > 1) label.preferredMaxLayoutWidth = width;
+    }
 }
 
 - (void)buildExpandedBody {
     __weak typeof(self) weak = self;
-    _location = RKDetail(@"");
-    RKAddFullWidth(_detail, _location);
+    _folder = WrappedLabel(12);
+    _session = WrappedLabel(12);
+    _folder.lineBreakMode = NSLineBreakByCharWrapping;
+    _session.lineBreakMode = NSLineBreakByCharWrapping;
+    [_folder setAccessibilityIdentifier:[@"agent-folder-" stringByAppendingString:_paneID]];
+    [_session setAccessibilityIdentifier:[@"agent-session-" stringByAppendingString:_paneID]];
+    NSView *left = Fact(@"Folder", @"folder", _folder);
+    NSView *right = Fact(@"tmux session / pane", @"rectangle.split.2x1", _session);
+    NSBox *separator = [NSBox new];
+    separator.boxType = NSBoxSeparator;
+    [separator.widthAnchor constraintEqualToConstant:1].active = YES;
+    NSView *facts = [NSView new];
+    for (NSView *field in @[left,separator,right]) {
+        field.translatesAutoresizingMaskIntoConstraints = NO;
+        [facts addSubview:field];
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [left.leadingAnchor constraintEqualToAnchor:facts.leadingAnchor],
+        [left.topAnchor constraintEqualToAnchor:facts.topAnchor],
+        [right.trailingAnchor constraintEqualToAnchor:facts.trailingAnchor],
+        [right.topAnchor constraintEqualToAnchor:facts.topAnchor],
+        [left.widthAnchor constraintEqualToAnchor:right.widthAnchor multiplier:0.9],
+        [separator.leadingAnchor constraintEqualToAnchor:left.trailingAnchor constant:10],
+        [separator.trailingAnchor constraintEqualToAnchor:right.leadingAnchor constant:-10],
+        [separator.topAnchor constraintEqualToAnchor:facts.topAnchor],
+        [separator.bottomAnchor constraintEqualToAnchor:facts.bottomAnchor],
+        [facts.bottomAnchor constraintGreaterThanOrEqualToAnchor:left.bottomAnchor],
+        [facts.bottomAnchor constraintGreaterThanOrEqualToAnchor:right.bottomAnchor]
+    ]];
+    NSView *factsPanel = RKInset(facts,NSEdgeInsetsMake(8,10,8,10));
+    factsPanel.wantsLayer = YES;
+    factsPanel.layer.backgroundColor = [NSColor colorWithWhite:0.17 alpha:0.16].CGColor;
+    factsPanel.layer.borderColor = [RKTintColor(RKTintMuted) colorWithAlphaComponent:0.32].CGColor;
+    factsPanel.layer.borderWidth = 1;
+    factsPanel.layer.cornerRadius = 7;
+    RKAddFullWidth(_detail, factsPanel);
     _result = WrappedLabel(12.5);
     _result.hidden = YES;
     RKAddFullWidth(_detail, _result);
     _questionBody = RKColumn(7);
+    _questionBody.hidden = YES;
     RKAddFullWidth(_detail, _questionBody);
+    NSStackView *steerCaption = RKRow(6);
+    [steerCaption addArrangedSubview:RKLabel(@"Steer",13,NSFontWeightSemibold)];
+    [steerCaption addArrangedSubview:RKSpring()];
+    [steerCaption addArrangedSubview:RKDetail(@"Hold F10 to dictate")];
+    RKAddFullWidth(_detail, steerCaption);
     _composer = [[RKPromptView alloc] initWithHint:@"Message this agent…"];
     [_composer.editor setAccessibilityIdentifier:[@"steer-" stringByAppendingString:self.paneID]];
     RKAddFullWidth(_detail, _composer);
@@ -117,7 +279,10 @@ static NSTextField *WrappedLabel(CGFloat size) {
 - (void)setExpanded:(BOOL)expanded {
     _expanded = expanded;
     self.detail.hidden = !expanded;
-    self.disclose.image = [NSImage imageWithSystemSymbolName:expanded ? @"chevron.down" : @"chevron.right" accessibilityDescription:nil];
+    self.tintsSurface = expanded;
+    [self.disclose setAccessibilityExpanded:expanded];
+    NSImage *glyph = [NSImage imageWithSystemSymbolName:expanded ? @"chevron.down" : @"circle.fill" accessibilityDescription:nil];
+    self.disclose.image = [glyph imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:expanded ? 12 : 8 weight:NSFontWeightSemibold]];
 }
 
 - (void)updatePane:(NSDictionary *)pane request:(NSDictionary *)request {
@@ -128,11 +293,16 @@ static NSTextField *WrappedLabel(CGFloat size) {
     self.name.toolTip = name;
     self.metadata.stringValue = [pane[@"preset"] length] ? pane[@"preset"] : pane[@"command"] ?: @"";
     RKTint tint = RKRequestTint(request);
-    [self setAccent:tint];
-    self.status.stringValue = RKRequestKind(request);
-    self.status.textColor = RKTintColor(tint);
-    self.location.stringValue = [NSString stringWithFormat:@"%@   ·   %@", [pane[@"path"] stringByAbbreviatingWithTildeInPath] ?: @"", pane[@"session"] ?: @""];
-    self.location.toolTip = self.location.stringValue;
+    RKTint identityTint = AgentTint(pane);
+    [self setAccent:identityTint];
+    self.disclose.contentTintColor = RKTintColor(identityTint);
+    NSString *status = RKRequestKind(request);
+    if (![self.status.stringValue isEqual:status]) self.status.stringValue = status;
+    if (self.status.tint != tint) self.status.tint = tint;
+    self.folder.stringValue = [pane[@"path"] stringByAbbreviatingWithTildeInPath] ?: @"";
+    self.folder.toolTip = pane[@"path"];
+    self.session.stringValue = [NSString stringWithFormat:@"%@ · %@",pane[@"session"] ?: @"",self.paneID];
+    self.session.toolTip = [NSString stringWithFormat:@"%@ / %@ / %@",pane[@"session"] ?: @"",pane[@"window"] ?: @"",self.paneID];
     self.disclose.toolTip = [NSString stringWithFormat:@"Show or hide %@", name];
     if ([request[@"kind"] isEqual:@"complete"]) self.latestResult = request[@"summary"];
     self.result.stringValue = self.latestResult ?: @"";
