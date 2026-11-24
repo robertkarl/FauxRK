@@ -36,5 +36,5 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 
 ## Capture names
 
-- [ ] Verify recognizable names for isolated and shared sessions, literal tmux names, and existing captures.
-- [ ] Restore the reported session’s recognizable name, review the change, and deliver the laptop build.
+- [x] Verify recognizable names for isolated and shared sessions, literal tmux names, and existing captures.
+- [x] Restore the reported session’s recognizable name, review the change, and deliver the laptop build.

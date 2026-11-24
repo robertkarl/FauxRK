@@ -1,14 +1,9 @@
-## FauxRK remote control review
+## Code Review: Preserve captured tmux names
 
-**Verdict: PASS** for the implementation through `689dcdc`.
+**Verdict: PASS** for commit `4fe99c1`.
 
-Fable reviewed the design and implementation. Opus ran the code review on a clean snapshot, built the app and helper, and reproduced a reply disappearing while a reconnected helper reclassified a question. A separate reviewer verified the corrections.
+### Findings
 
-- The sidebar keeps an edited reply for the same question through a transient missing or completed row. A new question, agent, or computer gets its own draft.
-- A dropped agent action leaves a dismissible, host-specific notice. Losing a read receipt does not overwrite a notice about a send. Reconnection reports the number of agents needing attention while inference settles.
-- Remote terminal attachments use the helper’s actual socket and verify ownership at attachment. Real PTY fixtures exercised four concurrent clients, literal shell metacharacters in the socket path, and stale identities.
-- Helper shutdown cleans up inference windows and temporary pane text. Notification receipts survive helper upgrades and stale reconnect banners are withdrawn after relaunch.
+No open findings. I reran the original regression in an isolated tmux 3.5a server. Inventory listed the shared pane under `Alpha` first, while a pane-only lookup still returned `Zebra`. Capture preserved `Alpha` as both the session name and the card label.
 
-`make test` passed, including the sidebar, routing, SSH transport, monitor, terminal, notifications, and voice suites. The signed laptop dashboard connected to Debra. A live single-controller test covered capture, literal multiline steering, answers, read receipts, reconnect, interrupt, and a completed Luna Medium turn.
-
-The live macOS iTerm2 test reached the Automation consent prompt and timed out before a client attached. Two native laptop windows remain a hands-on check. The terminal test also needs enough room under the macOS Unix socket path limit for its fixture.
+`Tests/core.sh` passed. It also exercises explicit selection of a linked session, rejection of an unrelated session, fallback names when siblings remain, literal punctuation and backslashes, and a user rename after capture. I traced the selected session ID from the discovery row through the host request to the move. The sidebar and individual notifications use the captured label.

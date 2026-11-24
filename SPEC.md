@@ -23,6 +23,6 @@ RK is a local macOS sidebar for talking to terminal agents. Build its native UI 
 
 ## Capture names
 
-- [ ] Capture uses the original tmux session name as the card title, with the window name in the details. Attention rows and individual notifications use that session name after capture and reconnect.
-- [ ] The dedicated tmux session reuses the source session name when available. If another window still needs that name, the new session includes the original session and window names with a readable disambiguator if necessary.
-- [ ] Capture preserves the live pane, its process and the window name. Spawning and existing captures without recorded names keep their current behavior.
+- [x] Capture uses the original tmux session name as the card title, with the window name in the details. Attention rows and individual notifications use that session name after capture and reconnect.
+- [x] The dedicated tmux session reuses the source session name when available. If another window still needs that name, the new session includes the original session and window names with a readable disambiguator if necessary.
+- [x] Capture preserves the live pane, its process and the window name. Spawning and existing captures without recorded names keep their current behavior.
