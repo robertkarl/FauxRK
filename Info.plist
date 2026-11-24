@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>RK</string>
+<key>CFBundleIdentifier</key><string>net.robertkarl.RK</string>
+<key>CFBundleName</key><string>RK</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Record your voice while you hold F10 to transcribe an RK prompt on this Mac.</string>
+<key>NSAppleEventsUsageDescription</key><string>RK checks which tmux pane you are using and opens a new iTerm2 window when requested.</string>
+</dict></plist>
