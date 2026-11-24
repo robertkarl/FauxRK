@@ -18,6 +18,7 @@
 
 @interface RKApp () <RKSidebarDelegate>
 @property RKRoute *route;
+@property RKLocalHost *localHost;
 @property NSString *hostID;
 @property NSString *destination;
 @property BOOL connected;
@@ -132,7 +133,10 @@
     if (self.isRemote) {
         NSURL *helper = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"Contents/Helpers/fauxrk-helper"];
         route.host = [[RKRemoteHost alloc] initWithDestination:self.destination helperURL:helper];
-    } else route.host = [RKLocalHost new];
+    } else {
+        if (!self.localHost) self.localHost = [RKLocalHost new];
+        route.host = self.localHost;
+    }
     self.route = route;
     self.polling = NO;
     self.connected = NO;
@@ -146,6 +150,7 @@
     NSString *selection = [hostID isEqual:@"debra"] ? @"debra" : @"local";
     if ([selection isEqual:self.hostID]) return;
     self.hostID = selection;
+    self.localHost = nil;
     self.selectionGeneration++;
     self.unconfirmed = nil;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -218,6 +223,7 @@
         [self.alerts beginCatchUp];
     }
     if (self.lastPollError) [self.sidebar showStatus:self.unconfirmed ?: @""];
+    if (!self.connected) NSLog(@"FauxRK connected to %@ (%lu panes)", self.isRemote ? @"Debra" : @"This Mac", (unsigned long)panes.count);
     self.connected = YES;
     self.lastSeen = [NSDate date];
     self.lastPollError = nil;
@@ -275,7 +281,7 @@
 
 - (void)capturePane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
-    if (!target || [self.pendingCaptures containsObject:target]) return;
+    if (!self.connected || self.route.retired || !target || [self.pendingCaptures containsObject:target]) return;
     [self.pendingCaptures addObject:target];
     [self perform:@"capture" arguments:@{@"target":target} then:^(id result) { [self.pendingCaptures removeObject:target]; }];
 }
@@ -346,7 +352,7 @@
 }
 
 - (void)answerPane:(NSString *)paneID fingerprint:(NSString *)fingerprint choice:(NSDictionary *)choice {
-    if ([self.pendingAnswers containsObject:fingerprint]) return;
+    if (!self.connected || self.route.retired || [self.pendingAnswers containsObject:fingerprint]) return;
     [self.pendingAnswers addObject:fingerprint];
     [self perform:@"answer" arguments:@{@"id":paneID, @"fingerprint":fingerprint, @"choice":choice} then:^(id result) {
         [self.pendingAnswers removeObject:fingerprint];

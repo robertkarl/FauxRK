@@ -1,4 +1,4 @@
-# RK handoff
+# FauxRK handoff
 
 ## Verified
 
@@ -26,7 +26,7 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 ## FauxRK remote control
 
 - [x] Record the Debra-only SSH workflow, helper installation, preset folders, and disconnect behavior in the design interview.
-- [ ] Verify the full remote workflow on the laptop once implemented.
-- [ ] Implement and test shared host operations, SSH transport, and per-user helper bootstrap.
-- [ ] Integrate host picker, stale snapshot/draft handling, catch-up notifications, and local SSH terminal attachments.
+- [x] Run the live laptop → Debra RPC fixture. It captured a disposable process, steered literal Unicode text, answered a blocker, reconnected, spawned a real Luna Medium turn and cleaned up both sessions.
+- [x] Implement and test shared host operations, SSH transport, and per-user helper bootstrap.
+- [x] Integrate host picker, stale snapshot/draft handling, catch-up notifications, and local SSH terminal attachments.
 - [ ] Build the renamed app with the fork icon, review it, verify laptop → Debra, and publish.
