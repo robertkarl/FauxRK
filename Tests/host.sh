@@ -26,6 +26,7 @@ cat > "$ZDOTDIR/.zshrc" <<'ZSH'
 export PATH="$RK_HOST_FIXTURE/bin:$PATH"
 alias claudesonnet='rk_preview'
 rk_preview() {
+  print -r -- "$PWD" >> "$RK_HOST_FIXTURE/preview-dirs"
   : > "$RK_HOST_FIXTURE/preview-started"
   while [[ ! -f "$RK_HOST_FIXTURE/release-preview" ]]; do /bin/sleep .05; done
   /bin/cat >/dev/null

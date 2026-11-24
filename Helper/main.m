@@ -103,9 +103,12 @@ int main(int argc, const char *argv[]) {
                 p = newline+1;
             }
         }
-        // Incomplete lines are never executed. Work awaiting an explicit
-        // response ends with the connection; existing managed agents live in tmux.
+        // In-flight inference owns its temporary screen and tmux window.
+        // Let bounded provider calls finish their cleanup before exiting.
+        atomic_store(&RKOutputClosed,true);
         [previews cancelAllOperations];
+        [host finishBackgroundWork];
+        [previews waitUntilAllOperationsAreFinished];
     }
     return 0;
 }

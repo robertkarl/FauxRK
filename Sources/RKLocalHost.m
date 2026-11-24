@@ -110,6 +110,7 @@ static NSUserDefaults *RKRemoteHandoffDefaults(void) {
 @implementation RKLocalHost
 - (instancetype)init { return [self initForSSH:NO]; }
 - (instancetype)initForSSHHelper { return [self initForSSH:YES]; }
+- (void)finishBackgroundWork { [self.monitor finishBackgroundWork]; }
 - (instancetype)initForSSH:(BOOL)remote {
     if ((self = [super init])) {
         _sshHelper = remote;

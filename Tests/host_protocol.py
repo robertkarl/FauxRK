@@ -172,4 +172,35 @@ for directory, preset in (("~/Code/regina/", "Astra Medium"), ("~/homelab/", "Fa
     assert (project / "interrupted").is_file()
     assert host.run("end", target=created["target"])
 host.close()
-print("Host protocol passed: typed wire, parallel preview, detached capture, fresh answers, reconnect, attach and guarded end")
+
+# On EOF, both a manually requested preview and an automated pane assessment
+# must reach their cleanup handlers before the SSH process exits.
+pane_id = tmux("new-session", "-dP", "-F", "#{pane_id}", "-s", "eof-fixture", sys.executable, "-u", str(script), str(work))
+host = Host(upgraded)
+source = next(p for p in host.run("snapshot")["panes"] if p["id"] == pane_id)
+assert host.run("capture", target=source["target"])
+owned = next(p for p in host.run("snapshot", provider="sonnet")["panes"] if p["id"] == pane_id)
+(work / "release-preview").unlink()
+jobs = work / "preview-dirs"
+previous = len(jobs.read_text().splitlines())
+time.sleep(.75)
+host.run("snapshot")
+host.send("preview", target=owned["target"])
+deadline = time.monotonic() + 5
+while len(jobs.read_text().splitlines()) < previous + 2 and time.monotonic() < deadline:
+    time.sleep(.03)
+dirs = [Path(p) for p in jobs.read_text().splitlines()[previous:]]
+assert len(dirs) == 2 and all((p / "in").is_file() for p in dirs), dirs
+host.proc.stdin.close()
+try:
+    host.proc.wait(timeout=.2)
+    raise AssertionError("EOF abandoned active inference before cleanup")
+except subprocess.TimeoutExpired:
+    pass
+(work / "release-preview").touch()
+host.close()
+assert all(not path.exists() for path in dirs), dirs
+sessions = tmux("list-sessions", "-F", "#{session_name}").splitlines()
+assert not any(name.startswith("rk-helpers-") for name in sessions), sessions
+assert tmux("display-message", "-p", "-t", pane_id, "#{pane_id}") == pane_id
+print("Host protocol passed: typed wire, parallel preview, detached capture, fresh answers, reconnect, attach, guarded end and EOF cleanup")

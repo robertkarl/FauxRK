@@ -57,6 +57,10 @@ static NSString *RKHash(NSString *s) {
     _handoffs[rkID] = handoff;
     [self.handoffDefaults setObject:_handoffs forKey:RKLastHandoffs];
 }
+- (void)finishBackgroundWork {
+    [_helpers cancelAllOperations];
+    [_helpers waitUntilAllOperationsAreFinished];
+}
 
 - (void)requestHelper:(NSString *)screen signature:(NSString *)signature pane:(NSString *)pid provider:(NSString *)provider observation:(NSMutableDictionary *)obs {
     if ([provider isEqual:@"off"] || obs[@"helper"] || obs[@"pending"] || [obs[@"retryAt"] timeIntervalSinceNow] > 0 ||
