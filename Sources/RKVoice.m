@@ -1,20 +1,6 @@
 #import "RKVoice.h"
 #import <AVFoundation/AVFoundation.h>
 
-// Push-to-talk dictation: hold to record locally, release to transcribe with
-// whisper-cli, then insert an editable draft into the editor that was focused
-// when recording began. Nothing leaves the Mac and nothing is ever submitted.
-//
-// Every attempt gets a generation number. Any late callback (microphone
-// permission, transcription) whose generation is stale is dropped, so a
-// cancelled or superseded attempt can never write into an editor.
-//
-// Configuration (all optional):
-//   RK_WHISPER_CLI       path to whisper-cli
-//   RK_WHISPER_MODEL     path to a ggml model
-//   RK_WHISPER_LANGUAGE  spoken language, default "en"
-// Without a model, run scripts/setup-voice.sh.
-
 static const NSTimeInterval RKVoiceMinimumClip = 0.3;
 static const NSTimeInterval RKVoiceMaximumClip = 120;
 static const NSTimeInterval RKVoiceTranscriptionTimeout = 60;
@@ -49,7 +35,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 
 - (void)dealloc {
     [_recorder stop];
-    [_task terminate];
+    if (_task.isRunning) [_task terminate];
     if (_clipURL) [NSFileManager.defaultManager removeItemAtURL:_clipURL error:nil];
 }
 
@@ -57,7 +43,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 
 - (void)beginWithEditor:(NSTextView *)editor {
     if (self.state != RKVoiceIdle) return;  // key repeat, or a clip still transcribing
-    if (!editor.isEditable || !editor.window) {
+    if (!editor.isEditable || !editor.window || editor.window.firstResponder != editor || editor.hiddenOrHasHiddenAncestor) {
         [self report:@"Dictation needs a focused RK prompt."];
         return;
     }
@@ -87,7 +73,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 
 - (void)cancel {
     BOOL wasActive = self.state != RKVoiceIdle;
-    [self.task terminate];
+    if (self.task.isRunning) [self.task terminate];
     [self resetAttempt];
     if (wasActive) [self report:@"Dictation cancelled."];
 }
@@ -138,8 +124,8 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
         if (generation == self.generation) [self resetAttempt];
         return;
     }
-    if (![self editorIsStillUsable]) {
-        [self report:@"Dictation stopped: the prompt closed."];
+    if (![self editorIsStillUsable] || self.editorWindow.firstResponder != self.editor) {
+        [self report:@"Dictation stopped because the original prompt lost focus."];
         [self resetAttempt];
         return;
     }
@@ -162,8 +148,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
         AVLinearPCMIsBigEndianKey: @NO,
     };
     NSError *error = nil;
-    self.recorder = [[AVAudioRecorder alloc] initWithURL:self.clipURL settings:format error:&error];
-    if (!self.recorder || ![self.recorder recordForDuration:RKVoiceMaximumClip]) {
+    if (![self recordToURL:self.clipURL settings:format error:&error]) {
         [self report:[NSString stringWithFormat:@"Could not start recording: %@",
                       error.localizedDescription ?: @"no input device"]];
         [self resetAttempt];
@@ -172,6 +157,11 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
     self.recordingStarted = [NSDate date];
     self.state = RKVoiceRecording;
     [self report:@"Listening… release F10 to transcribe."];
+}
+
+- (BOOL)recordToURL:(NSURL *)url settings:(NSDictionary *)settings error:(NSError **)error {
+    self.recorder = [[AVAudioRecorder alloc] initWithURL:url settings:settings error:error];
+    return [self.recorder recordForDuration:RKVoiceMaximumClip];
 }
 
 - (void)stopRecordingAndTranscribe {
@@ -239,9 +229,10 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
         [self report:@"No speech recognized."];
     } else if (![self editorIsStillUsable]) {
         [self report:@"Transcription discarded: the prompt it was meant for is gone."];
-    } else {
-        [self insertDraft:draft];
+    } else if ([self insertDraft:draft]) {
         [self report:@"Draft inserted. Review before sending."];
+    } else {
+        [self report:@"The prompt could not accept the transcript."];
     }
     [self resetAttempt];
 }
@@ -269,21 +260,24 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 // is fine; the editor being torn down or re-parented is not.
 - (BOOL)editorIsStillUsable {
     NSTextView *editor = self.editor;
-    return editor && editor.isEditable && editor.window && editor.window == self.editorWindow;
+    return editor.isEditable && editor.window && editor.window == self.editorWindow && !editor.hiddenOrHasHiddenAncestor;
 }
 
 // Inserts at the current selection through the text system so undo works and
 // delegates see the change. Never sends Return or calls any submit action.
-- (void)insertDraft:(NSString *)draft {
+- (BOOL)insertDraft:(NSString *)draft {
     NSTextView *editor = self.editor;
     NSRange range = editor.selectedRange;
-    if (range.location > editor.string.length) range = NSMakeRange(editor.string.length, 0);
+    if (range.location > editor.string.length || range.length > editor.string.length - range.location) {
+        range = NSMakeRange(editor.string.length, 0);
+    }
     NSString *text = [self draft:draft spacedForRange:range inString:editor.string];
-    if (![editor shouldChangeTextInRange:range replacementString:text]) return;
+    if (![editor shouldChangeTextInRange:range replacementString:text]) return NO;
     [editor.textStorage replaceCharactersInRange:range withString:text];
     [editor didChangeText];
     [editor setSelectedRange:NSMakeRange(range.location + text.length, 0)];
     [editor scrollRangeToVisible:editor.selectedRange];
+    return YES;
 }
 
 - (NSString *)draft:(NSString *)draft spacedForRange:(NSRange)range inString:(NSString *)string {
