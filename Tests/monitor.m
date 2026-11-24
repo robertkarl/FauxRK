@@ -18,7 +18,9 @@ int main(int argc, const char **argv) { @autoreleasepool {
     NSDictionary *pane = @{@"id":@"%1", @"managed":@YES, @"rkID":NSUUID.UUID.UUIDString, @"command":@"codex", @"session":@"fixture"};
     NSArray *panes = @[pane, @{@"id":@"%2",@"managed":@NO}];
     Fixture *core = [Fixture new];
-    RKMonitor *m = [[RKMonitor alloc] initWithCore:(RKCore *)core];
+    NSString *suite = [@"RK.monitor.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
+    RKMonitor *m = [[RKMonitor alloc] initWithCore:core handoffDefaults:defaults];
     core.page = @"The scratchpad is ready.\nInstall the missing dependency and retry? [y/N]";
     if (![provider isEqual:@"off"]) {
         NSString *summary = [m preview:@"%1" error:NULL];
@@ -40,9 +42,20 @@ int main(int argc, const char **argv) { @autoreleasepool {
     Check((![m answer:@{@"key":@"y",@"label":@"Injected"} pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL]), "unoffered action accepted");
     Check([m answer:row[@"choices"][1] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL] && [core.sent isEqual:@"n"], "no action sent");
     Check(![m answer:row[@"choices"][0] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL], "double click sent twice");
-    m = [[RKMonitor alloc] initWithCore:(RKCore *)core];
+    [NSThread sleepForTimeInterval:4.1];
     row = [m update:panes][@"%1"];
-    Check([row[@"responseSent"] boolValue] && ![m answer:row[@"choices"][0] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL], "reconnect repeated a just-sent answer");
+    Check(![row[@"responseSent"] boolValue], "original connection did not release its short retry guard");
+    NSMutableDictionary *receipt = [[defaults dictionaryForKey:@"RKLastHandoffsV1"][pane[@"rkID"]] mutableCopy];
+    Check(receipt[@"sentAt"] != nil, "live poll discarded a receipt still needed on reconnect");
+    receipt[@"sentAt"] = [NSDate dateWithTimeIntervalSinceNow:-18];
+    [defaults setObject:@{pane[@"rkID"]:receipt} forKey:@"RKLastHandoffsV1"];
+    m = [[RKMonitor alloc] initWithCore:core handoffDefaults:defaults];
+    row = [m update:panes][@"%1"];
+    Check([row[@"responseSent"] boolValue] && ![m answer:row[@"choices"][0] pane:@"%1" fingerprint:row[@"fingerprint"] error:NULL], "reconnect after an SSH timeout repeated an unconfirmed answer");
+    receipt[@"sentAt"] = [NSDate dateWithTimeIntervalSinceNow:-26];
+    [defaults setObject:@{pane[@"rkID"]:receipt} forKey:@"RKLastHandoffsV1"];
+    m = [[RKMonitor alloc] initWithCore:core handoffDefaults:defaults];
+    Check(![[m update:panes][@"%1"][@"responseSent"] boolValue], "restored answer never became retryable");
     core.page = @"Which folder should I use?";
     row = [m update:panes][@"%1"];
     NSDictionary *draft = @{@"label":@"Reply", @"text":@"The demo project", @"draft":@YES};
@@ -82,7 +95,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     Check([row[@"kind"] isEqual:@"complete"] && [row[@"summary"] containsString:@"82 tests"], "turn completion missing");
     [m markRead:@"%1" fingerprint:row[@"fingerprint"]];
     Check([m update:panes].count == 0, "read completion still visible");
-    m = [[RKMonitor alloc] initWithCore:(RKCore *)core];
+    m = [[RKMonitor alloc] initWithCore:core handoffDefaults:defaults];
     Check([m update:panes].count == 0, "read state lost on restart");
     core.page = @"Working (esc to interrupt)";
     [m update:panes];
@@ -96,6 +109,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     [m update:panes];
     [NSThread sleepForTimeInterval:1.5];
     Check(![m update:panes].count, "Codex logo triggered handoff");
+    [defaults removePersistentDomainForName:suite];
     NSLog(@"Monitor fixtures passed");
     return 0;
 }}

@@ -63,7 +63,7 @@ static void serveFrame(NSData *frame, RKLocalHost *host, NSOperationQueue *previ
         }
     };
     if ([op isEqual:@"preview"]) {
-        if (previews.operationCount >= 12) reply(identifier,nil,@"Pane previews are busy. Try again shortly.");
+        if (previews.operationCount >= (NSUInteger)previews.maxConcurrentOperationCount) reply(identifier,nil,@"Pane previews are busy. Try again shortly.");
         else [previews addOperationWithBlock:perform];
     } else {
         // Inventory and all mutations run in wire order.

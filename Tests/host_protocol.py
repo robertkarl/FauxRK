@@ -97,14 +97,18 @@ assert stored["RKLastHandoffsV1"]["legacy-agent"] == legacy["legacy-agent"]
 raw = source["target"]
 
 # A blocked preview never holds up snapshot or control traffic.
-preview_id = host.send("preview", target=raw)
+previews = {host.send("preview", target=raw) for _ in range(3)}
 deadline = time.monotonic() + 5
 while not (work / "preview-started").exists() and time.monotonic() < deadline:
     time.sleep(.03)
 assert (work / "preview-started").is_file()
+assert "busy" in host.run("preview", expect_error=True, target=raw)
 host.run("snapshot", provider="sonnet", model="qwen3:4b", focusToken="")
 (work / "release-preview").touch()
-assert host.receive() == {"id": preview_id, "value": "The isolated fixture wants an answer."}
+while previews:
+    reply = host.receive()
+    assert reply["value"] == "The isolated fixture wants an answer.", reply
+    previews.remove(reply["id"])
 
 assert host.run("capture", target=raw) is True
 snap = host.run("snapshot")

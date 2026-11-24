@@ -28,6 +28,7 @@ static NSString *RKHash(NSString *s) {
 }
 @interface RKMonitor ()
 @property(nonatomic,strong) RKCore *core;
+@property(nonatomic,strong) NSDate *startedAt;
 @property(nonatomic,strong) NSUserDefaults *handoffDefaults;
 @property(nonatomic,strong) NSOperationQueue *helpers;
 @property(nonatomic,strong) NSMutableDictionary<NSString *,NSMutableDictionary *> *observations;
@@ -40,6 +41,7 @@ static NSString *RKHash(NSString *s) {
 }
 - (instancetype)initWithCore:(RKCore *)core handoffDefaults:(NSUserDefaults *)defaults {
     if ((self = [super init])) {
+        _startedAt = [NSDate date];
         _handoffDefaults = defaults;
         _core = core;
         _helpers = [NSOperationQueue new];
@@ -139,12 +141,17 @@ static NSString *RKHash(NSString *s) {
     BOOL same = [saved[@"signature"] isEqual:signature];
     if (!same || !event) event = NSUUID.UUID.UUIDString;
     row[@"fingerprint"] = event;
-    if (same && !obs[@"sent"] && [saved[@"sentAt"] isKindOfClass:NSDate.class]) obs[@"sent"] = saved[@"sentAt"];
-    if (obs[@"sent"] && -[obs[@"sent"] timeIntervalSinceNow] >= 4) obs[@"sent"] = nil;
+    NSDate *sentAt = same && [saved[@"sentAt"] isKindOfClass:NSDate.class] ? saved[@"sentAt"] : nil;
+    // Preserve the receipt through an SSH timeout and reconnect. On the
+    // submitting connection the person can retry an unchanged prompt sooner.
+    NSTimeInterval elapsed = -[sentAt timeIntervalSinceNow];
+    if (elapsed >= 25) sentAt = nil;
+    BOOL restored = sentAt && [sentAt compare:_startedAt] == NSOrderedAscending;
+    obs[@"sent"] = restored || elapsed < 4 ? sentAt : nil;
     if (obs[@"sent"]) row[@"responseSent"] = @YES;
     BOOL read = same && [saved[@"read"] boolValue] && [row[@"kind"] isEqual:@"complete"];
     NSMutableDictionary *handoff = [@{@"id":event, @"signature":signature, @"read":@(read)} mutableCopy];
-    if (obs[@"sent"]) handoff[@"sentAt"] = obs[@"sent"];
+    if (sentAt) handoff[@"sentAt"] = sentAt;
     [self saveHandoff:handoff forID:rkID];
     obs[@"row"] = [row copy];
     return read ? nil : obs[@"row"];
