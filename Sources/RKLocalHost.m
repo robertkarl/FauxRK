@@ -1,5 +1,6 @@
 #import "RKHost.h"
 #import "RKCore.h"
+#import "RKRemoteTerminal.h"
 
 static id RKHostFailure(NSError **error, NSString *message) {
     if (error) *error = [NSError errorWithDomain:@"RKHostOperation" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
@@ -39,7 +40,7 @@ static NSDictionary<NSString *,NSArray<NSString *> *> *RKOperationFields(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSArray *target = @[@"target"];
-        fields = @{@"snapshot":@[@"provider?", @"model?"], @"spawn":@[@"preset", @"directory", @"prompt?"],
+        fields = @{@"snapshot":@[@"provider?", @"model?", @"focusToken?"], @"spawn":@[@"preset", @"directory", @"prompt?"],
             @"capture":target, @"interrupt":target, @"end":target, @"preview":target, @"attach":target, @"open":target,
             @"steer":@[@"target",@"text"], @"read":@[@"id",@"fingerprint"], @"answer":@[@"id",@"fingerprint",@"choice"]};
     });
@@ -59,7 +60,7 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
         if (optional && !value) continue;
         BOOL valid;
         if ([key isEqual:@"choice"]) valid = RKValidChoice(value);
-        else if ([key isEqual:@"prompt"]) valid = [value isKindOfClass:NSString.class];
+        else if ([key isEqual:@"prompt"] || [key isEqual:@"focusToken"]) valid = [value isKindOfClass:NSString.class];
         else valid = RKText(value);
         if (!valid) return [NSString stringWithFormat:@"Invalid or missing '%@' for %@.",key,operation];
     }
@@ -75,16 +76,14 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
 @end
 
 @implementation RKLocalHost
-- (instancetype)init {
+- (instancetype)init { return [self initForSSH:NO]; }
+- (instancetype)initForSSHHelper { return [self initForSSH:YES]; }
+- (instancetype)initForSSH:(BOOL)remote {
     if ((self = [super init])) {
-        _core = [RKCore new];
+        _sshHelper = remote;
+        _core = [[RKCore alloc] initWithDesktopFocus:!remote];
         _monitor = [[RKMonitor alloc] initWithCore:_core];
     }
-    return self;
-}
-
-- (instancetype)initForSSHHelper {
-    if ((self = [self init])) _sshHelper = YES;
     return self;
 }
 
@@ -118,7 +117,23 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
     if ([operation isEqual:@"snapshot"]) {
         if (![self configureHelper:args error:error]) return nil;
         NSArray *panes = [self.core panes:error];
-        return panes ? @{@"panes":panes, @"attention":[self.monitor update:panes]} : nil;
+        if (!panes) return nil;
+        NSString *token = args[@"focusToken"];
+        if (self.sshHelper && token.length) {
+            NSString *focused = [RKRemoteTerminal focusedPaneForToken:token core:self.core];
+            if (focused) {
+                NSMutableArray *inventory = [panes mutableCopy];
+                for (NSUInteger i = 0; i < inventory.count; i++) {
+                    if (![inventory[i][@"id"] isEqual:focused]) continue;
+                    NSMutableDictionary *pane = [inventory[i] mutableCopy];
+                    pane[@"focused"] = @YES;
+                    inventory[i] = pane;
+                    break;
+                }
+                panes = inventory;
+            }
+        }
+        return @{@"panes":panes, @"attention":[self.monitor update:panes]};
     }
     if ([operation isEqual:@"spawn"]) {
         NSString *directory = args[@"directory"];

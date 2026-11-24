@@ -2,6 +2,7 @@
 
 // All tmux operations target the local server. Tests may select RK_TMUX_SOCKET.
 @interface RKCore : NSObject
+- (instancetype)initWithDesktopFocus:(BOOL)observe;
 // Each pane has string fields id, session, window, command, path, title, activity,
 // id is the display %pane_id. Use target for I/O and rkID for persistent identity.
 - (NSArray<NSDictionary *> *)panes:(NSError **)error;

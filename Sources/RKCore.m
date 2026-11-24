@@ -134,7 +134,16 @@ static NSString *safeName(NSString *source) {
     return [slug substringToIndex:MIN(slug.length, 35)];
 }
 
-@implementation RKCore
+@implementation RKCore {
+    BOOL _observeDesktopFocus;
+}
+
+- (instancetype)init { return [self initWithDesktopFocus:YES]; }
+
+- (instancetype)initWithDesktopFocus:(BOOL)observe {
+    if ((self = [super init])) _observeDesktopFocus = observe;
+    return self;
+}
 
 - (NSString *)binary {
     for (NSString *path in @[@"/opt/homebrew/bin/tmux", @"/usr/local/bin/tmux", @"/opt/local/bin/tmux"]) {
@@ -207,7 +216,7 @@ static NSString *safeName(NSString *source) {
     }
     NSMutableArray *rows = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
-    NSString *focus = [self focusedPane];
+    NSString *focus = _observeDesktopFocus ? [self focusedPane] : nil;
     NSArray *records = readRecords(output, fields.count);
     if (!records) return RKFail(error, @"Could not decode the tmux inventory.");
     for (NSArray *f in records) {
