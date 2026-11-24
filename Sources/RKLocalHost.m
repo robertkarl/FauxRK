@@ -49,7 +49,7 @@ static NSDictionary<NSString *,NSArray<NSString *> *> *RKOperationFields(void) {
 
 static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
     NSArray *fields = RKOperationFields()[operation];
-    if (!fields) return @"Unknown RK host operation.";
+    if (!fields) return @"Unknown FauxRK host operation.";
     if (![args isKindOfClass:NSDictionary.class]) return @"Host arguments must be a JSON object.";
     NSMutableSet *allowed = [NSMutableSet new];
     for (NSString *field in fields) {
@@ -64,7 +64,7 @@ static NSString *RKArgumentError(NSString *operation, NSDictionary *args) {
         else valid = RKText(value);
         if (!valid) return [NSString stringWithFormat:@"Invalid or missing '%@' for %@.",key,operation];
     }
-    if (![[NSSet setWithArray:args.allKeys] isSubsetOfSet:allowed]) return @"Unexpected RK host argument.";
+    if (![[NSSet setWithArray:args.allKeys] isSubsetOfSet:allowed]) return @"Unexpected FauxRK host argument.";
     if (args[@"target"] && !RKValidTarget(args[@"target"])) return @"A complete pane identity from a recent snapshot is required.";
     return nil;
 }

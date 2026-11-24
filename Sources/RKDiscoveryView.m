@@ -99,7 +99,7 @@
     [self.capture setAccessibilityLabel:capture];
     [self.name setAccessibilityLabel:focused ? [name stringByAppendingString:@", focused pane"] : name];
     self.preview.toolTip = preview;
-    self.capture.toolTip = [capture stringByAppendingString:@" in a dedicated RK session"];
+    self.capture.toolTip = [capture stringByAppendingString:@" in a dedicated FauxRK session"];
 }
 @end
 

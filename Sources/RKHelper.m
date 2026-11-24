@@ -48,10 +48,10 @@ static NSData *RKClaude(RKCore *core, NSString *screen, NSError **error) {
         NSString *script =
             @"job=$1; shift\n"
              "if (( $+aliases[claudesonnet] )); then\n"
-             "  print -r -- 'RK · Reading pane with claudesonnet'\n"
+             "  print -r -- 'FauxRK · Reading pane with claudesonnet'\n"
              "  rk_helper() { eval 'claudesonnet \"$@\"'; }\n"
              "else\n"
-             "  print -r -- 'RK · claudesonnet unavailable; using claude --model sonnet'\n"
+             "  print -r -- 'FauxRK · claudesonnet unavailable; using claude --model sonnet'\n"
              "  rk_helper() { command claude --model sonnet \"$@\"; }\n"
              "fi\n"
              "rk_helper \"$@\" < \"$job/in\" | /usr/bin/tee \"$job/out\"\n"

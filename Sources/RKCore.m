@@ -245,7 +245,7 @@ static NSString *safeName(NSString *source) {
     BOOL managed = [f[1] isEqual:@"1"] && [f[2] isEqual:pid];
     NSString *live = liveTarget(pid, gen, managed ? f[6] : nil);
     if (![target isEqual:pid] && ![target isEqual:live]) return RKFail(error, @"This pane has changed. Refresh the card before acting.");
-    if (required && !managed) return RKFail(error, @"This pane is no longer managed by RK.");
+    if (required && !managed) return RKFail(error, @"This pane is no longer managed by FauxRK.");
     return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5]};
 }
 
@@ -335,7 +335,7 @@ static NSString *safeName(NSString *source) {
             @";",@"kill-pane",@"-t",staging];
         NSString *result = [self tmux:cmd error:error];
         if (!result) return NO; // Only our expiring placeholder can remain.
-        if ([trim(result) isEqual:@"RK_TARGET_CHANGED"]) return RKRefuse(error,@"This pane changed before RK could capture it.");
+        if ([trim(result) isEqual:@"RK_TARGET_CHANGED"]) return RKRefuse(error,@"This pane changed before FauxRK could capture it.");
         return YES;
     }
 }
@@ -403,7 +403,7 @@ static NSString *safeName(NSString *source) {
         NSString *pid = paneNumber(targetID);
         NSDictionary *meta = [self metadata:targetID managed:YES error:error];
         if (!meta) return NO;
-        if (![meta[@"single"] boolValue]) return RKRefuse(error,@"This session now contains additional windows or panes. Close those before ending this RK session.");
+        if (![meta[@"single"] boolValue]) return RKRefuse(error,@"This session now contains additional windows or panes. Close those before ending this FauxRK session.");
         NSString *live = meta[@"target"];
         for (NSUInteger n = 0; n < 2; n++) {
             if (![self apply:[NSString stringWithFormat:@"send-keys -t %@ C-c",pid] meta:meta single:YES error:error]) return ![self metadata:live managed:NO error:nil];

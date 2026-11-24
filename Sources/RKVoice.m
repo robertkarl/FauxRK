@@ -44,7 +44,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 - (void)beginWithEditor:(NSTextView *)editor {
     if (self.state != RKVoiceIdle) return;  // key repeat, or a clip still transcribing
     if (!editor.isEditable || !editor.window || editor.window.firstResponder != editor || editor.hiddenOrHasHiddenAncestor) {
-        [self report:@"Dictation needs a focused RK prompt."];
+        [self report:@"Dictation needs a focused FauxRK prompt."];
         return;
     }
     if (![self toolsAreReady]) return;
@@ -87,7 +87,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
             return;
         case AVAuthorizationStatusDenied:
         case AVAuthorizationStatusRestricted:
-            [self report:@"Microphone access is off. Enable RK in System Settings > Privacy & Security > Microphone."];
+            [self report:@"Microphone access is off. Enable FauxRK in System Settings > Privacy & Security > Microphone."];
             [self resetAttempt];
             return;
         case AVAuthorizationStatusNotDetermined:
@@ -99,7 +99,7 @@ typedef NS_ENUM(NSInteger, RKVoiceState) {
 - (void)requestMicrophoneAccess:(NSUInteger)generation {
     if (![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"]) {
         // Without the usage string macOS terminates the process on request.
-        [self report:@"RK cannot ask for the microphone: NSMicrophoneUsageDescription is missing from Info.plist."];
+        [self report:@"FauxRK cannot ask for the microphone: NSMicrophoneUsageDescription is missing from Info.plist."];
         [self resetAttempt];
         return;
     }

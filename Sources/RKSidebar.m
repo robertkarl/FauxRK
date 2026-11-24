@@ -406,7 +406,7 @@
     NSAlert *alert = [NSAlert new];
     alert.alertStyle = NSAlertStyleWarning;
     alert.messageText = [NSString stringWithFormat:@"End %@?", RKPaneTitle(pane)];
-    alert.informativeText = [NSString stringWithFormat:@"RK will send two interrupts and close the tmux session “%@”.",pane[@"session"]];
+    alert.informativeText = [NSString stringWithFormat:@"FauxRK will send two interrupts and close the tmux session “%@”.",pane[@"session"]];
     [alert addButtonWithTitle:@"Cancel"];
     NSButton *end = [alert addButtonWithTitle:@"End Session"];
     end.hasDestructiveAction = YES;
