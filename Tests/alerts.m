@@ -181,6 +181,20 @@ static void FailedCatchUp(NSUserDefaults *defaults) {
     Check(center.posts.count == 3 && [center.posts.lastObject.identifier isEqual:@"Debra:retry-B"],
           @"New event arriving during catch-up posts individually after acknowledgement");
     [center finishAdd:@"Debra:retry-B"];
+
+    // The Notification Center outlives the app. One summary member may
+    // have resolved while the app was closed, and the other may remain.
+    alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity){} center:(id)center
+                                   defaults:defaults foreground:^BOOL{ return NO; }];
+    Check(![center.delivered containsObject:@"RKCatchUp.Debra"], @"The old remote aggregate survived relaunch on This Mac");
+    Check([center.delivered containsObject:@"Debra:retry-B"], @"Relaunch removed a still-current individual banner");
+    [alerts selectComputer:RKAlertsDebra];
+    [alerts beginCatchUp];
+    NSDictionary *remaining = @{@"%2":changed[@"%2"]};
+    [alerts updatePanes:panes attention:remaining];
+    Drain();
+    [alerts updatePanes:panes attention:remaining];
+    Check(center.posts.count == 3, @"Relaunch repeated a previously delivered handoff");
 }
 
 int main(void) {

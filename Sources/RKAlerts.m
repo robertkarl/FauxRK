@@ -40,6 +40,11 @@ NSString *const RKAlertsDebra = @"Debra";
     _socket = NSProcessInfo.processInfo.environment[@"RK_TMUX_SOCKET"] ?: @"default";
     _center = center;
     _center.delegate = self;
+    // A summary describes the backlog at a particular reconnect. Relaunch
+    // opens the sidebar again; either computer's old aggregate may be stale.
+    // Individual handoff receipts remain available to suppress duplicates.
+    [center removeDeliveredNotificationsWithIdentifiers:@[[@"RKCatchUp." stringByAppendingString:RKAlertsThisMac],
+                                                           [@"RKCatchUp." stringByAppendingString:RKAlertsDebra]]];
     [self loadComputer:RKAlertsThisMac];
     return self;
 }
