@@ -3,6 +3,7 @@
 #import "RKAlerts.h"
 #import "RKSidebar.h"
 #import "RKVoice.h"
+#import "RKPaneOrder.h"
 
 @interface RKApp () <RKSidebarDelegate>
 @property RKCore *core;
@@ -16,9 +17,10 @@
 @property BOOL polling;
 @property BOOL sortRequested;
 @property BOOL recordingKeyDown;
-@property NSArray<NSString *> *order;
+@property RKPaneOrder *paneOrder;
+@property BOOL launching;
+@property NSString *notificationTarget;
 @property NSString *lastPollError;
-@property NSDictionary *latestAttention;
 @property NSDictionary<NSString *, NSString *> *targets;
 @property NSMutableSet<NSString *> *pendingCaptures;
 @end
@@ -26,13 +28,14 @@
 @implementation RKApp
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     self.core = [RKCore new];
+    self.paneOrder = [RKPaneOrder new];
     self.monitor = [[RKMonitor alloc] initWithCore:self.core];
     self.worker = dispatch_queue_create("net.robertkarl.RK.agent-control", DISPATCH_QUEUE_SERIAL);
     self.pendingCaptures = [NSMutableSet set];
     self.sidebar = [[RKSidebar alloc] initWithDelegate:self];
     __weak typeof(self) weakSelf = self;
     self.voice = [[RKVoice alloc] initWithStatus:^(NSString *message) { [weakSelf.sidebar showStatus:message]; }];
-    self.alerts = [[RKAlerts alloc] initWithOpen:^(NSString *paneID) { [weakSelf openAttention:paneID]; }];
+    self.alerts = [[RKAlerts alloc] initWithOpen:^(NSString *identity) { weakSelf.notificationTarget = identity; [weakSelf.sidebar showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; [weakSelf refresh]; }];
     [self installMenus];
     [self.sidebar showWindow:nil];
     [NSApp activateIgnoringOtherApps:YES];
@@ -81,8 +84,7 @@
     [NSApp activateIgnoringOtherApps:YES];
     [self.sidebar showWindow:nil];
     [self.sidebar revealPane:paneID];
-    NSDictionary *row = self.latestAttention[paneID];
-    if ([row[@"kind"] isEqual:@"complete"]) [self readAttentionForPane:paneID fingerprint:row[@"fingerprint"]];
+
 }
 
 - (void)refresh {
@@ -104,31 +106,17 @@
             NSMutableDictionary *targets = [NSMutableDictionary dictionary];
             for (NSDictionary *pane in panes) targets[pane[@"id"]] = pane[@"target"] ?: pane[@"id"];
             self.targets = targets;
-            self.latestAttention = attention;
-            [self.sidebar displayPanes:[self orderedPanes:panes] attention:attention];
+            [self.sidebar displayPanes:[self.paneOrder arrange:panes resort:self.sortRequested] attention:attention];
+            self.sortRequested = NO;
+            if (self.notificationTarget) {
+                for (NSDictionary *pane in panes) {
+                    if ([pane[@"rkID"] isEqual:self.notificationTarget]) [self openAttention:pane[@"id"]];
+                }
+                self.notificationTarget = nil;
+            }
             [self.alerts updatePanes:panes attention:attention];
         });
     });
-}
-
-- (NSArray *)orderedPanes:(NSArray *)panes {
-    NSMutableDictionary *byID = [NSMutableDictionary dictionary];
-    for (NSDictionary *pane in panes) byID[pane[@"id"]] = pane;
-    NSMutableArray *result = [NSMutableArray array];
-    if (!self.sortRequested) {
-        for (NSString *paneID in self.order) {
-            if (byID[paneID]) [result addObject:byID[paneID]];
-            [byID removeObjectForKey:paneID];
-        }
-    }
-    NSArray *sort = @[[NSSortDescriptor sortDescriptorWithKey:@"focused" ascending:NO],
-                      [NSSortDescriptor sortDescriptorWithKey:@"activity" ascending:NO comparator:^NSComparisonResult(id a, id b) {
-                          return [@([a doubleValue]) compare:@([b doubleValue])];
-                      }], [NSSortDescriptor sortDescriptorWithKey:@"id" ascending:YES selector:@selector(localizedStandardCompare:)]];
-    [result addObjectsFromArray:[byID.allValues sortedArrayUsingDescriptors:sort]];
-    self.order = [result valueForKey:@"id"];
-    self.sortRequested = NO;
-    return result;
 }
 
 - (void)sortPanesByActivity { self.sortRequested = YES; [self refresh]; }
@@ -146,8 +134,10 @@
 }
 
 - (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt {
+    if (self.launching) return;
+    self.launching = YES;
     [self perform:^BOOL(NSError **error) { return [self.core spawnPreset:preset directory:directory.stringByExpandingTildeInPath prompt:prompt error:error] != nil; }
-            then:^(BOOL ok) { if (ok) [self.sidebar didSpawnWithPrompt:prompt]; }];
+            then:^(BOOL ok) { self.launching = NO; if (ok) [self.sidebar didSpawnWithPrompt:prompt]; }];
 }
 - (void)capturePane:(NSString *)paneID {
     if ([self.pendingCaptures containsObject:paneID]) return;
@@ -188,7 +178,12 @@
 - (void)openTerminalForPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
     if (!target) return;
-    [self perform:^BOOL(NSError **error) { return [self.core openWindow:target error:error]; } then:nil];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSError *error = nil;
+        if (![self.core openWindow:target error:&error]) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [self.sidebar showStatus:error.localizedDescription]; });
+        }
+    });
 }
 - (void)readAttentionForPane:(NSString *)paneID fingerprint:(NSString *)fingerprint {
     [self perform:^BOOL(NSError **error) { [self.monitor markRead:paneID fingerprint:fingerprint]; return YES; } then:nil];

@@ -38,13 +38,16 @@
     if (!self.authorized || !fingerprint.length || [self.delivered[identity] isEqual:fingerprint] || [self.pending containsObject:identity]) return;
     if ([pane[@"focused"] boolValue] || NSApp.isActive) return;
     UNMutableNotificationContent *content = [UNMutableNotificationContent new];
-    content.title = pane[@"title"] ?: pane[@"session"];
+    content.title = [pane[@"title"] length] ? pane[@"title"] : pane[@"session"];
     content.body = row[@"summary"] ?: row[@"question"] ?: @"Agent needs attention";
     content.userInfo = @{@"pane":pane[@"id"], @"identity":identity};
     UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identity content:content trigger:nil];
     [self.pending addObject:identity];
+    __weak typeof(self) weakSelf = self;
     [self.center addNotificationRequest:request withCompletionHandler:^(NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
             [self.pending removeObject:identity];
             if (!error) {
                 self.delivered[identity] = fingerprint;
@@ -59,7 +62,7 @@
     for (NSDictionary *pane in panes) {
         if (![pane[@"managed"] boolValue]) continue;
         [self authorize];
-        NSString *identity = pane[@"uuid"] ?: pane[@"session"];
+        NSString *identity = pane[@"rkID"];
         NSDictionary *row = rows[pane[@"id"]];
         if (!row) continue;
         [live addObject:identity];
@@ -75,7 +78,7 @@
 }
 
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))done {
-    NSString *pane = response.notification.request.content.userInfo[@"pane"];
-    dispatch_async(dispatch_get_main_queue(), ^{ if (pane) self.open(pane); done(); });
+    NSString *identity = response.notification.request.content.userInfo[@"identity"];
+    dispatch_async(dispatch_get_main_queue(), ^{ if (identity) self.open(identity); done(); });
 }
 @end
