@@ -186,7 +186,9 @@
     NSString *message = error.localizedDescription ?: @"Could not read tmux.";
     if (![message isEqual:self.lastPollError]) {
         NSLog(@"FauxRK disconnected from %@: %@", self.isRemote ? @"Debra" : @"This Mac", message);
-        [self.sidebar showStatus:message];
+        NSString *hint = @" Check Debra’s reachability and FauxRK’s Local Network access in System Settings.";
+        BOOL timedOut = self.isRemote && [message localizedCaseInsensitiveContainsString:@"timed out"];
+        [self.sidebar showStatus:timedOut ? [message stringByAppendingString:hint] : message];
     }
     self.lastPollError = message;
 }

@@ -29,7 +29,7 @@ To open a launch draft for a specific project when starting FauxRK on This Mac, 
 
 ## Drive Debra from the laptop
 
-Choose **Debra** in the sidebar. FauxRK uses your existing OpenSSH configuration for `debra` and requires a trusted host key and noninteractive login. To use a different trusted SSH destination for Debra, set it before launching the app.
+Choose **Debra** in the sidebar. On a LAN, allow FauxRK under **System Settings → Privacy &amp; Security → Local Network** when macOS asks. FauxRK uses your existing OpenSSH configuration for `debra` and requires a trusted host key and noninteractive login. To use a different trusted SSH destination for Debra, set it before launching the app.
 
 ```sh
 defaults write net.robertkarl.RK FauxRKDebraDestination your-ssh-alias

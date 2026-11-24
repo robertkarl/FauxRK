@@ -11,6 +11,7 @@
 <key>CFBundleVersion</key><string>2</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSLocalNetworkUsageDescription</key><string>Connect to Debra over SSH to display and control its tmux agents.</string>
 <key>NSMicrophoneUsageDescription</key><string>Record your voice while you hold F10 to transcribe a FauxRK prompt on this Mac.</string>
 <key>NSAppleEventsUsageDescription</key><string>FauxRK checks which tmux pane you are using and opens a new iTerm2 window when requested.</string>
 </dict></plist>
