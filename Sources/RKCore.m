@@ -236,7 +236,7 @@ static NSString *safeName(NSString *source) {
     NSString *pid = paneNumber(target);
     if (!numericID(pid, '%')) return RKFail(error, @"Invalid tmux pane identifier.");
     NSArray *fields = @[@"session_id",@"@rk_managed",@"@rk_pane",@"pane_current_command",@"window_name",
-        @"pane_current_path",@"@rk_id",@"session_windows",@"window_panes",@"pid",@"start_time",@"pane_pid"];
+        @"pane_current_path",@"@rk_id",@"session_windows",@"window_panes",@"pid",@"start_time",@"pane_pid",@"socket_path"];
     NSString *line = [self tmux:@[@"display-message",@"-p",@"-t",pid,recordFormat(fields)] error:error];
     if (!line) return nil;
     NSArray *f = [readRecords(line,fields.count) firstObject];
@@ -246,7 +246,7 @@ static NSString *safeName(NSString *source) {
     NSString *live = liveTarget(pid, gen, managed ? f[6] : nil);
     if (![target isEqual:pid] && ![target isEqual:live]) return RKFail(error, @"This pane has changed. Refresh the card before acting.");
     if (required && !managed) return RKFail(error, @"This pane is no longer managed by FauxRK.");
-    return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5]};
+    return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5], @"socketPath":f[12]};
 }
 
 // The condition and its command execute in the tmux server's command queue.
@@ -419,7 +419,9 @@ static NSString *safeName(NSString *source) {
 - (NSDictionary *)attachMetadata:(NSString *)target error:(NSError **)error {
     NSDictionary *meta = [self metadata:target managed:YES error:error];
     if (!meta) return nil;
-    return @{@"binary":self.binary, @"sessionID":meta[@"sessionID"]};
+    NSMutableDictionary *attachment = [@{@"binary":self.binary, @"sessionID":meta[@"sessionID"]} mutableCopy];
+    if ([meta[@"socketPath"] length]) attachment[@"socketPath"] = meta[@"socketPath"];
+    return attachment;
 }
 
 - (BOOL)openWindow:(NSString *)target error:(NSError **)error {

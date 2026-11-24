@@ -43,33 +43,36 @@ static NSString *RKUUIDToken(NSString *s) {
 @implementation RKFocusProbe
 @end
 
-// Runs on the remote host as: /bin/sh -c GUARD fauxrk TMUX SESSION PANE GENERATION UUID TOKEN.
+// Runs on the remote host as: /bin/sh -c GUARD fauxrk TMUX SOCKET SESSION PANE GENERATION UUID TOKEN.
 // The state check repeats the helper's managed-lifetime validation at attach time. The
 // registration names the client by $$, which exec preserves as the tmux client PID.
 // Every attach first drops registrations whose client PID is no longer attached.
 static NSString *const RKRemoteGuard =
     @"fail() { printf \"FauxRK: %s\\n\" \"$1\" >&2; printf \"Press Return to close.\" >&2; read -r _ || true; exit 1; }\n"
-    "tmux=$1 sid=$2 pane=$3 gen=$4 uuid=$5 token=${6-}\n"
+    "tmux=$1 socket=$2 sid=$3 pane=$4 gen=$5 uuid=$6 token=${7-}\n"
     "[ -x \"$tmux\" ] || fail \"tmux is not installed at $tmux.\"\n"
+    "unset TMUX TMUX_PANE\n"
+    "set -- \"$tmux\"\n"
+    "[ -z \"$socket\" ] || set -- \"$tmux\" -S \"$socket\"\n"
     "actual='#{session_id}|#{pid}-#{start_time}-#{pane_pid}|#{@rk_id}|#{@rk_pane}|#{@rk_managed}'\n"
     "expected=\"$sid|$gen|$uuid|$pane|1\"\n"
     "case $token in *[!0-9A-Fa-f-]*) token= ;; [0-9A-Fa-f]*-*-*-*-*) ;; *) token= ;; esac\n"
     // Enumerate registration candidates before the live clients. An attach
     // that arrives during cleanup cannot appear as a newly stale candidate.
-    "candidates=$(\"$tmux\" show-options -s 2>/dev/null)\n"
-    "live=\" $(\"$tmux\" list-clients -F '#{client_pid}' 2>/dev/null | tr '\\n' ' ') \"\n"
+    "candidates=$(\"$@\" show-options -s 2>/dev/null)\n"
+    "live=\" $(\"$@\" list-clients -F '#{client_pid}' 2>/dev/null | tr '\\n' ' ') \"\n"
     "printf '%s\\n' \"$candidates\" | while read -r name registered _; do\n"
     "  case $name in @rk_iterm_*) pid=${name#@rk_iterm_} ;; *) continue ;; esac\n"
     "  case $pid in ''|*[!0-9]*) continue ;; esac\n"
     "  case $registered in ''|*[!0-9A-Fa-f-]*) continue ;; esac\n"
     "  case $live in *\" $pid \"*) continue ;; esac\n"
-    "  \"$tmux\" if-shell -F \"#{==:#{$name},$registered}\" \"set-option -su $name\"\n"
+    "  \"$@\" if-shell -F \"#{==:#{$name},$registered}\" \"set-option -su $name\"\n"
     "done\n"
     "attach=\"attach-session -t '$sid'\"\n"
     "[ -z \"$token\" ] || attach=\"$attach ; set-option -s @rk_iterm_$$ $token\"\n"
     // The condition, attach and registration run together on one tmux server,
     // including when a previously resolved pane ID was reused after a restart.
-    "exec \"$tmux\" if-shell -F -t \"$pane\" \"#{==:$actual,$expected}\" \"$attach\" "
+    "exec \"$@\" if-shell -F -t \"$pane\" \"#{==:$actual,$expected}\" \"$attach\" "
     "\"display-message -p 'FauxRK: This agent changed. Refresh and open it again.' ; run-shell /usr/bin/false\"\n";
 
 // Runs locally in the new iTerm2 session as: /bin/sh -c LAUNCHER fauxrk BASE64(REMOTE) DESTINATION SSH.
@@ -124,6 +127,11 @@ static NSString *const RKLocalLauncher =
     if (!RKOnly(binary, @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._+-") || ![binary hasPrefix:@"/"] || [binary containsString:@"/../"] || [binary hasSuffix:@"/.."]) {
         RKTerminalFail(error, @"The remote host returned an invalid tmux path."); return nil;
     }
+    NSString *socket = metadata[@"socketPath"];
+    if (socket && (![socket isKindOfClass:NSString.class] || ![socket hasPrefix:@"/"] ||
+        [socket rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound)) {
+        RKTerminalFail(error, @"The remote host returned an invalid tmux socket path."); return nil;
+    }
     if (!RKPrefixedNumber(session, @"$")) { RKTerminalFail(error, @"The remote host returned an invalid tmux session."); return nil; }
     NSArray *parts = [target isKindOfClass:NSString.class] ? [target componentsSeparatedByString:@"|"] : nil;
     if (parts.count != 3 || !RKPrefixedNumber(parts[0], @"%") || !RKOnly(parts[1], @"0123456789-") || !RKUUIDToken(parts[2])) {
@@ -132,7 +140,7 @@ static NSString *const RKLocalLauncher =
     NSString *hostChars = @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:._-[]";
     if (!RKOnly(destination, hostChars) || [destination hasPrefix:@"-"]) { RKTerminalFail(error, @"The SSH destination is invalid."); return nil; }
     NSMutableArray *remote = [NSMutableArray arrayWithObjects:@"exec /bin/sh -c", RKQuote(RKRemoteGuard), @"fauxrk", nil];
-    for (NSString *arg in @[binary, session, parts[0], parts[1], parts[2]]) [remote addObject:RKQuote(arg)];
+    for (NSString *arg in @[binary, socket ?: @"", session, parts[0], parts[1], parts[2]]) [remote addObject:RKQuote(arg)];
     NSArray *local = @[@"/bin/sh", @"-c", RKQuote(RKLocalLauncher), @"fauxrk", RKQuote([[[remote componentsJoinedByString:@" "] dataUsingEncoding:NSUTF8StringEncoding] base64EncodedStringWithOptions:0]), RKQuote(destination), RKQuote(ssh)];
     return [local componentsJoinedByString:@" "];
 }

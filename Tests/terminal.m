@@ -32,9 +32,9 @@ static NSString *managedSession(RKCore *core, NSString *name, NSString *uuid) {
 }
 
 static NSDictionary *metadata(RKCore *core, NSString *target) {
-    NSMutableDictionary *meta = [[core attachMetadata:target error:NULL] mutableCopy];
-    NSCAssert(meta, @"Attach metadata");
-    meta[@"binary"] = [work stringByAppendingPathComponent:@"tmuxw"];
+    NSDictionary *meta = [core attachMetadata:target error:NULL];
+    NSString *socket = NSProcessInfo.processInfo.environment[@"RK_TMUX_SOCKET"];
+    NSCAssert([meta[@"socketPath"] isEqual:socket] && [meta[@"binary"] isAbsolutePath], @"Attach uses the live helper socket and executable");
     return meta;
 }
 
@@ -131,6 +131,14 @@ int main(void) {
         rejects(@{@"binary":@"/opt/homebrew/bin/tmux", @"sessionID":@"3"}, targetA, dest, @"session without $");
         rejects(@{@"binary":@"/opt/homebrew/bin/tmux", @"sessionID":@"$3;id"}, targetA, dest, @"session with command");
         rejects(@{@"binary":@"/opt/homebrew/bin/tmux", @"sessionID":@"$"}, targetA, dest, @"bare $");
+        for (id invalidSocket in @[@"relative.sock", @5, @"/tmp/invalid\npath"]) {
+            NSMutableDictionary *bad = metaA.mutableCopy;
+            bad[@"socketPath"] = invalidSocket;
+            rejects(bad, targetA, dest, @"invalid socket path");
+        }
+        NSMutableDictionary *legacy = metaA.mutableCopy;
+        [legacy removeObjectForKey:@"socketPath"];
+        NSCAssert(command(legacy, targetA, dest).length, @"Old metadata can use the default server");
         rejects(metaA, paneA, dest, @"bare pane target");
         rejects(metaA, [paneA stringByAppendingString:@"|1-2-3|"], dest, @"unmanaged target");
         rejects(metaA, [paneA stringByAppendingString:@"|1-2-3|not-a-uuid"], dest, @"invalid uuid");

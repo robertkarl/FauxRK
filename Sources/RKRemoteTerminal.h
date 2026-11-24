@@ -4,8 +4,9 @@
 
 // Laptop-side terminal attachments to a remote host's managed tmux sessions.
 @interface RKRemoteTerminal : NSObject
-// metadata is the helper's attach reply {sessionID:"$n", binary:"/abs/tmux"}; target is the
-// managed live target "%pane|generation|uuid". Opens a fresh local iTerm2 window running
+// Metadata includes sessionID, the tmux binary, and the resolved socketPath.
+// Earlier helpers may omit socketPath to use the default server. The target is
+// the managed live target "%pane|generation|uuid". Opens a fresh local iTerm2 window running
 // ssh -t to destination. On the remote side a guard re-checks the pane's generation and
 // ownership marker before attaching, and registers this iTerm session for focus matching.
 + (BOOL)openAttachment:(NSDictionary *)metadata target:(NSString *)target destination:(NSString *)destination error:(NSError **)error;
