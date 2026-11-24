@@ -64,15 +64,26 @@ static NSString *const RKRemoteGuard =
     @"fail() { printf \"FauxRK: %s\\n\" \"$1\" >&2; printf \"Press Return to close.\" >&2; read -r _ || true; exit 1; }\n"
     "tmux=$1 sid=$2 pane=$3 gen=$4 uuid=$5 token=${6-}\n"
     "[ -x \"$tmux\" ] || fail \"tmux is not installed at $tmux.\"\n"
-    "state=$(\"$tmux\" display-message -p -t \"$pane\" \"#{session_id}|#{pid}-#{start_time}-#{pane_pid}|#{@rk_id}|#{@rk_pane}|#{@rk_managed}\" 2>/dev/null) || fail \"This agent is no longer running.\"\n"
-    "[ \"$state\" = \"$sid|$gen|$uuid|$pane|1\" ] || fail \"This agent changed. Refresh FauxRK and open it again.\"\n"
+    "actual='#{session_id}|#{pid}-#{start_time}-#{pane_pid}|#{@rk_id}|#{@rk_pane}|#{@rk_managed}'\n"
+    "expected=\"$sid|$gen|$uuid|$pane|1\"\n"
     "case $token in *[!0-9A-Fa-f-]*) token= ;; [0-9A-Fa-f]*-*-*-*-*) ;; *) token= ;; esac\n"
-    "live=\" $(\"$tmux\" list-clients -F \"#{client_pid}\" 2>/dev/null | tr \"\\n\" \" \") \"\n"
-    "\"$tmux\" show-options -s 2>/dev/null | while read -r name _; do\n"
-    "  case $name in @rk_iterm_*) case $live in *\" ${name#@rk_iterm_} \"*) ;; *) \"$tmux\" set-option -su \"$name\" ;; esac ;; esac\n"
+    // Enumerate registration candidates before the live clients. An attach
+    // that arrives during cleanup cannot appear as a newly stale candidate.
+    "candidates=$(\"$tmux\" show-options -s 2>/dev/null)\n"
+    "live=\" $(\"$tmux\" list-clients -F '#{client_pid}' 2>/dev/null | tr '\\n' ' ') \"\n"
+    "printf '%s\\n' \"$candidates\" | while read -r name registered _; do\n"
+    "  case $name in @rk_iterm_*) pid=${name#@rk_iterm_} ;; *) continue ;; esac\n"
+    "  case $pid in ''|*[!0-9]*) continue ;; esac\n"
+    "  case $registered in ''|*[!0-9A-Fa-f-]*) continue ;; esac\n"
+    "  case $live in *\" $pid \"*) continue ;; esac\n"
+    "  \"$tmux\" if-shell -F \"#{==:#{$name},$registered}\" \"set-option -su $name\"\n"
     "done\n"
-    "[ -z \"$token\" ] || \"$tmux\" set-option -s \"@rk_iterm_$$\" \"$token\" 2>/dev/null || true\n"
-    "exec \"$tmux\" attach-session -t \"$sid\"\n";
+    "attach=\"attach-session -t '$sid'\"\n"
+    "[ -z \"$token\" ] || attach=\"$attach ; set-option -s @rk_iterm_$$ $token\"\n"
+    // The condition, attach and registration run together on one tmux server,
+    // including when a previously resolved pane ID was reused after a restart.
+    "exec \"$tmux\" if-shell -F -t \"$pane\" \"#{==:$actual,$expected}\" \"$attach\" "
+    "\"display-message -p 'FauxRK: This agent changed. Refresh and open it again.' ; run-shell /usr/bin/false\"\n";
 
 // Runs locally in the new iTerm2 session as: /bin/sh -c LAUNCHER fauxrk BASE64(REMOTE) DESTINATION SSH.
 // iTerm2 splits its command string itself, so every argument is a single-quoted run with no
@@ -81,7 +92,7 @@ static NSString *const RKLocalLauncher =
     @"r=$(printf %s \"$1\" | /usr/bin/base64 -D) || exit 1\n"
     "t=${ITERM_SESSION_ID#*:}\n"
     "case $t in \"\"|*[!0-9A-Fa-f-]*) t=- ;; esac\n"
-    "exec \"$3\" -t -- \"$2\" \"$r $t\"\n";
+    "exec \"$3\" -t -o StrictHostKeyChecking=yes -o BatchMode=yes -- \"$2\" \"$r $t\"\n";
 
 @implementation RKRemoteTerminal
 

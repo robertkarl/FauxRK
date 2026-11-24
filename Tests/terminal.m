@@ -136,7 +136,7 @@ int main(void) {
         NSTask *clientA = attach(command(metaA, targetA, dest), [@"w0t0p0:" stringByAppendingString:tokenA], inA);
         waitForClients(core, 1);
         NSString *log = [NSString stringWithContentsOfFile:[work stringByAppendingPathComponent:@"ssh-args"] encoding:NSUTF8StringEncoding error:NULL];
-        NSString *prefix = [NSString stringWithFormat:@"-t\n--\n%@\nexec /bin/sh -c '", dest];
+        NSString *prefix = [NSString stringWithFormat:@"-t\n-o\nStrictHostKeyChecking=yes\n-o\nBatchMode=yes\n--\n%@\nexec /bin/sh -c '", dest];
         NSCAssert([log hasPrefix:prefix], @"ssh -t -- destination, then one remote command: %@", log);
         NSString *suffix = [NSString stringWithFormat:@"'%@' %@\n", parts0(targetA)[2], tokenA];
         NSCAssert([log hasSuffix:suffix], @"Remote command ends with the managed UUID and iTerm session token: %@", log);
@@ -147,6 +147,23 @@ int main(void) {
         NSCAssert([[RKRemoteTerminal focusedPaneForToken:tokenA core:core] isEqual:paneA], @"First mapping survives");
         NSCAssert(![RKRemoteTerminal focusedPaneForToken:NSUUID.UUID.UUIDString core:core], @"Unknown token focuses nothing");
         NSCAssert(![RKRemoteTerminal focusedPaneForToken:@"" core:core], @"Empty token focuses nothing");
+
+        // Overlapping terminal opens must not prune a new registration while
+        // its peer is still being established.
+        NSString *parallel = managedSession(core, @"parallel", NSUUID.UUID.UUIDString.lowercaseString);
+        NSMutableArray<NSTask *> *workers = [NSMutableArray array];
+        NSMutableArray<NSString *> *tokens = [NSMutableArray array];
+        NSString *parallelCommand = command(metadata(core,parallel),parallel,dest);
+        for (int i=0; i<4; i++) {
+            NSString *token = NSUUID.UUID.UUIDString;
+            [tokens addObject:token];
+            [workers addObject:attach(parallelCommand, [@"w2:" stringByAppendingString:token], [NSPipe pipe])];
+        }
+        waitForClients(core, 6);
+        for (NSString *token in tokens) waitForFocus(core,token,parts0(parallel).firstObject);
+        [core tmux:@[@"detach-client",@"-s",@"parallel"] error:NULL];
+        for (NSTask *worker in workers) [worker waitUntilExit];
+        waitForClients(core,2);
 
         // A closed window stops suppressing even though its option is not yet pruned.
         [clientA terminate]; [clientA waitUntilExit];
@@ -169,14 +186,17 @@ int main(void) {
                                   [NSString stringWithFormat:@"%@|%@|%@", parts[0], parts[1], uuidB],
                                   [NSString stringWithFormat:@"%@|%@|%@", paneB, [targetB componentsSeparatedByString:@"|"][1], uuidB]]) {
             NSTask *task = [NSTask new];
-            task.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
-            task.arguments = @[@"-c", command(metaA, stale, dest)];
-            task.environment = @{@"ITERM_SESSION_ID":[@"w3:" stringByAppendingString:NSUUID.UUID.UUIDString], @"PATH":@"/usr/bin:/bin"};
+            task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/script"];
+            task.arguments = @[@"-q",@"/dev/null",@"/bin/sh",@"-c",command(metaA, stale, dest)];
+            task.environment = @{@"ITERM_SESSION_ID":[@"w3:" stringByAppendingString:NSUUID.UUID.UUIDString], @"PATH":@"/usr/bin:/bin", @"TERM":@"xterm-256color"};
             NSPipe *err = [NSPipe pipe];
-            task.standardInput = NSFileHandle.fileHandleWithNullDevice;
-            task.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+            task.standardInput = [NSPipe pipe];
+            task.standardOutput = err;
             task.standardError = err;
             [task launch];
+            NSDate *limit = [NSDate dateWithTimeIntervalSinceNow:3];
+            while (task.running && limit.timeIntervalSinceNow>0) [NSThread sleepForTimeInterval:.02];
+            if (task.running) { [task terminate]; NSCAssert(NO,@"Mismatched target left a live terminal open"); }
             NSString *message = [[NSString alloc] initWithData:[err.fileHandleForReading readDataToEndOfFile] encoding:NSUTF8StringEncoding];
             [task waitUntilExit];
             NSCAssert(task.terminationStatus == 1 && [message containsString:@"FauxRK:"], @"Guard refuses %@: %@", stale, message);
