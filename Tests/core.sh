@@ -63,7 +63,8 @@ remaining=$(tm split-window -dP -F '#{pane_id}' -t "$other" /bin/cat)
 "$scratch/core" capture "$other" >/dev/null
 test "$(tm display-message -p -t "$other" '#{session_name}')" = "Project #{pane_id} Ω;-W_#{session_id}_ #' Ω;"
 test "$(tm display-message -p -t "$other" '#{@rk_source_session}')" = 'Project #{pane_id} Ω;'
-"$scratch/core" capture "$remaining" >/dev/null
+# A GUI-launched SSH helper may have no UTF-8 locale.
+LC_ALL=C LANG=C "$scratch/core" capture "$remaining" >/dev/null
 test "$(tm display-message -p -t "$remaining" '#{session_name}')" = 'Project #{pane_id} Ω;'
 test "$(tm display-message -p -t "$other" '#{@rk_source_window}')" = "W:#{session_id}. #' Ω;"
 tm rename-session -t "$other" -- "Renamed by me"

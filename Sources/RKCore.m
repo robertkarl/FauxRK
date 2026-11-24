@@ -160,7 +160,8 @@ static NSString *safeName(NSString *source) {
 }
 
 - (NSString *)tmux:(NSArray *)args input:(NSData *)input error:(NSError **)error {
-    return runTask(self.binary, [self.socketArguments arrayByAddingObjectsFromArray:args], input, error);
+    NSArray *client = [@[@"-u"] arrayByAddingObjectsFromArray:self.socketArguments];
+    return runTask(self.binary, [client arrayByAddingObjectsFromArray:args], input, error);
 }
 
 - (NSString *)tmux:(NSArray *)args error:(NSError **)error {
