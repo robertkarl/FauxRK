@@ -6,6 +6,7 @@
 @end
 
 @interface RKLocalHost : NSObject <RKHost>
+- (instancetype)initForSSHHelper;
 @end
 
 @interface RKRemoteHost : NSObject <RKHost>

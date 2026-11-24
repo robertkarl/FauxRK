@@ -13,6 +13,7 @@
 - (NSString *)screen:(NSString *)paneID error:(NSError **)error;
 - (BOOL)interrupt:(NSString *)paneID error:(NSError **)error;
 - (BOOL)end:(NSString *)paneID error:(NSError **)error;
+- (NSDictionary *)attachMetadata:(NSString *)target error:(NSError **)error;
 - (BOOL)openWindow:(NSString *)paneID error:(NSError **)error;
 @end
 

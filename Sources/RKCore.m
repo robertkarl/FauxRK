@@ -407,10 +407,16 @@ static NSString *safeName(NSString *source) {
     }
 }
 
-- (BOOL)openWindow:(NSString *)pid error:(NSError **)error {
-    NSDictionary *meta = [self metadata:pid managed:YES error:error];
+- (NSDictionary *)attachMetadata:(NSString *)target error:(NSError **)error {
+    NSDictionary *meta = [self metadata:target managed:YES error:error];
+    if (!meta) return nil;
+    return @{@"binary":self.binary, @"sessionID":meta[@"sessionID"]};
+}
+
+- (BOOL)openWindow:(NSString *)target error:(NSError **)error {
+    NSDictionary *meta = [self attachMetadata:target error:error];
     if (!meta) return NO;
-    NSMutableArray *argv = [NSMutableArray arrayWithObject:self.binary];
+    NSMutableArray *argv = [NSMutableArray arrayWithObject:meta[@"binary"]];
     [argv addObjectsFromArray:self.socketArguments];
     [argv addObjectsFromArray:@[@"attach-session",@"-t",meta[@"sessionID"]]];
     NSMutableArray *quoted = [NSMutableArray array];
