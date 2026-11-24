@@ -32,6 +32,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
 @interface RKAgentCardView ()
 @property (nonatomic, weak) id<RKSidebarDelegate> delegate;
 @property (nonatomic) RKActionButton *disclose;
+@property (nonatomic) RKActionButton *steerButton;
 @property (nonatomic) NSTextField *name;
 @property (nonatomic) NSTextField *metadata;
 @property (nonatomic) NSTextField *status;
@@ -102,12 +103,13 @@ static NSTextField *WrappedLabel(CGFloat size) {
         [weak.delegate openTerminalForPane:weak.paneID];
     }]];
     [actions addArrangedSubview:RKSpring()];
-    [actions addArrangedSubview:[RKActionButton title:@"Steer" symbol:@"arrow.up" help:@"Send steering message" tint:RKTintViolet action:^{
+    self.steerButton = [RKActionButton title:@"Steer" symbol:@"arrow.up" help:@"Send steering message" tint:RKTintViolet action:^{
         NSString *text = weak.composer.editor.string;
         if ([text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
             [weak.delegate steerPane:weak.paneID text:text];
         }
-    }]];
+    }];
+    [actions addArrangedSubview:self.steerButton];
     RKAddFullWidth(_detail, actions);
     RKAddFullWidth(self.body, _detail);
 }
@@ -120,9 +122,11 @@ static NSTextField *WrappedLabel(CGFloat size) {
 
 - (void)updatePane:(NSDictionary *)pane request:(NSDictionary *)request {
     NSString *name = RKPaneTitle(pane);
+    self.steerButton.enabled = ![request[@"choices"] count];
+    self.steerButton.toolTip = self.steerButton.enabled ? @"Send steering message" : @"Answer the current menu before steering";
     self.name.stringValue = name;
     self.name.toolTip = name;
-    self.metadata.stringValue = pane[@"preset"] ?: pane[@"command"] ?: @"";
+    self.metadata.stringValue = [pane[@"preset"] length] ? pane[@"preset"] : pane[@"command"] ?: @"";
     RKTint tint = RKRequestTint(request);
     [self setAccent:tint];
     self.status.stringValue = RKRequestKind(request);
