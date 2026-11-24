@@ -3,12 +3,13 @@
 // All tmux operations target the local server. Tests may select RK_TMUX_SOCKET.
 @interface RKCore : NSObject
 // Each pane has string fields id, session, window, command, path, title, activity,
-// and numeric fields managed, focused, attached. id is the tmux %pane_id.
+// id is the display %pane_id. Use target for I/O and rkID for persistent identity.
 - (NSArray<NSDictionary *> *)panes:(NSError **)error;
 - (NSString *)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt error:(NSError **)error;
 - (BOOL)capture:(NSString *)paneID error:(NSError **)error;
 - (BOOL)sendText:(NSString *)text toPane:(NSString *)paneID error:(NSError **)error;
 - (BOOL)sendKey:(NSString *)key toPane:(NSString *)paneID error:(NSError **)error;
+- (BOOL)sendKeys:(NSArray<NSString *> *)keys toPane:(NSString *)target error:(NSError **)error;
 - (NSString *)screen:(NSString *)paneID error:(NSError **)error;
 - (BOOL)interrupt:(NSString *)paneID error:(NSError **)error;
 - (BOOL)end:(NSString *)paneID error:(NSError **)error;
