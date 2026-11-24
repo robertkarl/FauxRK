@@ -294,7 +294,8 @@
     NSString *target = self.panesByID[paneID][@"target"];
     if (!self.connected || self.route.retired || !target || [self.pendingCaptures containsObject:target]) return;
     [self.pendingCaptures addObject:target];
-    NSDictionary *args = @{@"target":target, @"sourceSessionID":self.panesByID[paneID][@"sessionID"]};
+    NSMutableDictionary *args = [@{@"target":target} mutableCopy];
+    args[@"sourceSessionID"] = self.panesByID[paneID][@"sessionID"];
     [self perform:@"capture" arguments:args then:^(id result) { [self.pendingCaptures removeObject:target]; }];
 }
 
