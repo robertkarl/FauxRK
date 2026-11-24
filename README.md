@@ -37,7 +37,7 @@ defaults write net.robertkarl.RK FauxRKDebraDestination your-ssh-alias
 
 Debra needs a compatible Mac, tmux, and the agent CLIs you want to run. FauxRK installs its matching helper under your account on Debra and runs it over the SSH connection. Spawn uses the regina, homelab, and unbiasedbob-private folders in your home directory on Debra. Dictation uses the laptop microphone. **Open in New Window** opens iTerm2 on the laptop and attaches over SSH.
 
-If the connection drops, your tmux sessions continue running. The sidebar keeps your last view and drafts, shows when it last saw Debra, and retries automatically. Check the agent after an unconfirmed send before submitting again. Switching computers clears the current drafts. FauxRK remembers the selected computer when you quit.
+If the connection drops, your tmux sessions continue running. The sidebar keeps your last view and drafts, shows when it last saw Debra, and retries automatically. Check the agent after an unconfirmed send before submitting again. Switching computers clears the current drafts. FauxRK remembers the selected computer when you quit. Run one dashboard at a time. Two controllers monitoring the same computer can overwrite each other’s read receipts.
 
 ## Helpers and voice
 

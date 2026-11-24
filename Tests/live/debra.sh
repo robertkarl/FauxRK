@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run on the client Mac. Both the capture and the real agent use disposable
+# Quit the dashboard before running this single-controller test on the client Mac. Both the capture and the real agent use disposable
 # one-pane sessions on the selected host's regular tmux server.
 set -eu
 if [ "$#" -ne 2 ]; then

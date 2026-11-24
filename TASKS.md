@@ -21,7 +21,7 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 ## Dashboard visual update
 
 - [x] Match compact and expanded cards, the tmux inventory, and attention items to the original mockups. Check narrow layout, responder stability, and direct blocker choices.
-- [x] Review both icon concepts on the laptop. Icon selection is deferred.
+- [x] Retire the two early icon concepts. FauxRK uses the user-selected four-tine fork artwork.
 
 ## FauxRK remote control
 
