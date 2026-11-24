@@ -175,6 +175,52 @@ static void VerifyHostSwitching(RKSidebar *sidebar, Actions *actions) {
     projects = (NSPopUpButton *)Find(sidebar.window.contentView, @"spawn-directory");
     Check([projects.itemTitles containsObject:@"Choose another folder…"], @"This Mac keeps local folder selection");
 }
+static void VerifyReplyRestoration(RKSidebar *sidebar) {
+    NSMutableDictionary *input = [@{@"kind":@"input", @"question":@"Update the report?", @"fingerprint":@"report-question", @"suggestedReply":@"Include the summary."} mutableCopy];
+    NSArray *panes = @[Pane(0)];
+    NSView *root = sidebar.window.contentView;
+    [sidebar displayPanes:panes attention:@{@"%0":input.copy}];
+    [sidebar revealPane:@"%0"];
+    NSTextView *editor = (NSTextView *)Find(root, @"reply-%0");
+    editor.string = @"Include only the results.";
+    [sidebar showDisconnectedLastSeen:NSDate.date];
+    [sidebar displayPanes:panes attention:@{}];
+    [sidebar displayPanes:panes attention:@{@"%0":@{@"kind":@"complete", @"fingerprint":@"report-question", @"summary":@"Report complete."}}];
+    Check(!Find(root, @"reply-%0"), @"Temporary completion hides the reply field");
+    [sidebar displayPanes:panes attention:@{@"%0":input.copy}];
+    editor = (NSTextView *)Find(root, @"reply-%0");
+    Check([editor.string isEqual:@"Include only the results."], @"Recover unsent reply after missing and temporary complete rows");
+
+    [sidebar.window makeFirstResponder:editor];
+    [editor insertText:@"" replacementRange:NSMakeRange(0,editor.string.length)];
+    input[@"suggestedReply"] = @"A revised suggestion.";
+    [sidebar displayPanes:panes attention:@{@"%0":input.copy}];
+    Check(!editor.string.length, @"Refined helper suggestion respects a deliberately empty reply");
+    [sidebar displayPanes:panes attention:@{}];
+    [sidebar displayPanes:panes attention:@{@"%0":input.copy}];
+    editor = (NSTextView *)Find(root, @"reply-%0");
+    Check(editor && !editor.string.length, @"Recover deliberately empty reply across a temporary missing row");
+
+    [editor insertText:@"Only for the first question." replacementRange:editor.selectedRange];
+    input[@"fingerprint"] = @"another-question";
+    [sidebar displayPanes:panes attention:@{@"%0":input.copy}];
+    editor = (NSTextView *)Find(root, @"reply-%0");
+    Check([editor.string isEqual:input[@"suggestedReply"]], @"Different fingerprint gets its own suggested answer");
+    [editor insertText:@"Private to the original agent." replacementRange:NSMakeRange(0, editor.string.length)];
+    NSMutableDictionary *replacement = [Pane(0) mutableCopy];
+    replacement[@"target"] = @"another-managed-agent";
+    [sidebar displayPanes:@[replacement] attention:@{@"%0":input.copy}];
+    [sidebar revealPane:@"%0"];
+    editor = (NSTextView *)Find(root, @"reply-%0");
+    Check([editor.string isEqual:input[@"suggestedReply"]], @"Identical fingerprint on a different agent never inherits draft");
+    [editor insertText:@"Private to local host." replacementRange:NSMakeRange(0,editor.string.length)];
+    [sidebar switchToHost:@"debra"];
+    [sidebar displayPanes:@[replacement] attention:@{@"%0":input.copy}];
+    [sidebar revealPane:@"%0"];
+    editor = (NSTextView *)Find(sidebar.window.contentView, @"reply-%0");
+    Check([editor.string isEqual:input[@"suggestedReply"]], @"Same pane and fingerprint on a different host never inherit draft");
+}
+
 int main(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -237,6 +283,7 @@ int main(void) {
         Check(longButton && NSHeight(longButton.bounds) > 24, @"Wrap a long terminal answer");
         Check(fabs(NSWidth(view.bounds) - 370) < 1, @"Answer choices must honor the requested sidebar width");
         VerifyHostSwitching(sidebar, actions);
+        VerifyReplyRestoration(sidebar);
         [sidebar.window orderOut:nil];
         puts("sidebar fixtures passed");
     }

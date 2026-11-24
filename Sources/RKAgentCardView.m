@@ -67,7 +67,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     return column;
 }
 
-@interface RKAgentCardView ()
+@interface RKAgentCardView () <NSTextViewDelegate>
 @property (nonatomic, weak) id<RKSidebarDelegate> delegate;
 @property (nonatomic) RKActionButton *disclose;
 @property (nonatomic) RKActionButton *steerButton;
@@ -92,6 +92,8 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
 @property (nonatomic) NSTextField *questionLabel;
 @property (nonatomic) RKPromptView *composer;
 @property (nonatomic) RKPromptView *reply;
+@property (nonatomic, copy) NSDictionary<NSString *, NSString *> *replyDraft;
+@property (nonatomic, copy) NSString *initialReplyText;
 @property (nonatomic, copy) NSDictionary *request;
 @property (nonatomic, copy) NSString *latestResult;
 @end
@@ -342,6 +344,7 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     self.result.stringValue = self.latestResult ?: @"";
     self.result.hidden = !self.latestResult.length || (request && ![request[@"kind"] isEqual:@"complete"]);
     if ([self.request isEqual:request] || (!self.request && !request)) return;
+    if (self.reply && ![self.reply.editor.string isEqual:self.initialReplyText]) [self rememberReply];
     BOOL sameQuestion = [self.request[@"fingerprint"] isEqual:request[@"fingerprint"]];
     self.request = request.copy;
     if (sameQuestion && self.reply && [self requestAcceptsDraft]) {
@@ -361,10 +364,29 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     self.questionLabel.stringValue = [self.request[@"question"] length] ? self.request[@"question"] : (self.request[@"summary"] ?: @"");
 }
 
+- (void)rememberReply {
+    NSString *fingerprint = self.request[@"fingerprint"];
+    if (fingerprint.length) self.replyDraft = @{fingerprint:self.reply.editor.string.copy};
+}
+
+- (void)textDidChange:(NSNotification *)notification {
+    if (notification.object == self.reply.editor) [self rememberReply];
+}
+
+- (void)applyInitialReply:(NSString *)text {
+    NSTextView *editor = self.reply.editor;
+    self.initialReplyText = text;
+    editor.delegate = nil;
+    editor.string = text;
+    [editor didChangeText];
+    editor.delegate = self;
+}
+
 - (void)fillSuggestionIfEmpty {
-    if (!self.reply.editor.string.length && [self.request[@"suggestedReply"] length]) {
-        self.reply.editor.string = self.request[@"suggestedReply"];
-        [self.reply.editor didChangeText];
+    NSString *suggestion = self.request[@"suggestedReply"];
+    NSString *fingerprint = self.request[@"fingerprint"];
+    if (fingerprint && !self.replyDraft[fingerprint] && !self.reply.editor.string.length && suggestion.length) {
+        [self applyInitialReply:suggestion];
     }
 }
 
@@ -408,7 +430,10 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
     [self.reply.editor setAccessibilityIdentifier:[@"reply-" stringByAppendingString:self.paneID]];
     [self labelControl:self.reply.editor action:@"Reply to request"];
     RKAddFullWidth(self.questionBody, self.reply);
-    [self fillSuggestionIfEmpty];
+    NSString *saved = fingerprint ? self.replyDraft[fingerprint] : nil;
+    if (!saved) self.replyDraft = nil;
+    [self applyInitialReply:saved ?: self.request[@"suggestedReply"] ?: @""];
+
     RKActionButton *send = [RKActionButton title:@"Send reply" symbol:@"paperplane" help:@"Send edited reply to this request" tint:RKTintBlue action:^{
         NSString *reply = weak.reply.editor.string.copy;
         if (![reply stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return;
