@@ -184,7 +184,10 @@
     self.nextRetry = [NSDate dateWithTimeIntervalSinceNow:3];
     [self.sidebar showDisconnectedLastSeen:self.lastSeen];
     NSString *message = error.localizedDescription ?: @"Could not read tmux.";
-    if (![message isEqual:self.lastPollError]) [self.sidebar showStatus:message];
+    if (![message isEqual:self.lastPollError]) {
+        NSLog(@"FauxRK disconnected from %@: %@", self.isRemote ? @"Debra" : @"This Mac", message);
+        [self.sidebar showStatus:message];
+    }
     self.lastPollError = message;
 }
 
