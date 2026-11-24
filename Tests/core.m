@@ -56,6 +56,8 @@ int main(int argc, const char *argv[]) {
         NSDictionary *after = row(core,pid);
         require([after[@"managed"] boolValue] && [after[@"rkID"] length],@"capture marker missing");
         require([before[@"panePID"] isEqual:after[@"panePID"]],@"Capture replaced the live process");
+        require([after[@"capturedLabel"] isEqual:before[@"session"]],@"Capture lost the familiar name");
+        require([after[@"window"] isEqual:before[@"window"]],@"Capture changed the window name");
         require(![before[@"sessionID"] isEqual:after[@"sessionID"]],@"capture left pane in old session");
         require(![core interrupt:before[@"target"] error:&error],@"pre-capture selection still valid");
         puts([after[@"sessionID"] UTF8String]);

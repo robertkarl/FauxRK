@@ -29,11 +29,16 @@ exec /bin/cat
 SH
 chmod +x "$scratch/codex"
 anchor=$(tm -f /dev/null new-session -dP -F '#{pane_id}' -s 'source' -c "$RK_TEST_WORKSPACE" /bin/cat)
+tm rename-window -t "$anchor" "Work Notes"
 sibling=$(tm split-window -dP -F '#{pane_id}' -t "$anchor" /bin/cat)
 client_count=$(tm list-clients | wc -l)
 test "$client_count" -eq 0
 "$scratch/core" unmanaged "$anchor"
+occupied=$(tm new-session -dP -F '#{session_id}' -s 'source-Work Notes' /bin/cat)
 session=$("$scratch/core" capture "$anchor")
+test "$(tm display-message -p -t "$anchor" '#{session_name}')" = "source-Work Notes-2"
+test "$(tm display-message -p -t "$anchor" '#{@rk_source_window}')" = "Work Notes"
+test "$(tm display-message -p -t "$occupied" '#{session_name}')" = "source-Work Notes"
 test "$(tm list-panes -t "$session" -F '#{pane_id}')" = "$anchor"
 test "$(tm list-panes -t source -F '#{pane_id}')" = "$sibling"
 "$scratch/core" stale "$anchor"
@@ -48,7 +53,19 @@ tm kill-pane -t "$extra"
 tm has-session -t source
 singleton=$("$scratch/core" capture "$sibling")
 test "$(tm list-panes -t "$singleton" -F '#{pane_id}')" = "$sibling"
-! tm has-session -t source 2>/dev/null
+test "$(tm display-message -p -t "$sibling" '#{session_name}')" = source
+# Literal format-looking text, punctuation, Unicode and command separators survive capture.
+window_name="W:##{session_id}. #' Ω;"
+other=$(tm new-session -dP -F '#{pane_id}' -s "Second" /bin/cat)
+tm rename-session -t "$other" -- "Project ##{pane_id} Ω\;"
+tm rename-window -t "$other" -- "${window_name%;}\;"
+remaining=$(tm split-window -dP -F '#{pane_id}' -t "$other" /bin/cat)
+"$scratch/core" capture "$other" >/dev/null
+test "$(tm display-message -p -t "$other" '#{session_name}')" = "Project #{pane_id} Ω;-W_#{session_id}_ #' Ω;"
+test "$(tm display-message -p -t "$other" '#{@rk_source_session}')" = 'Project #{pane_id} Ω;'
+"$scratch/core" capture "$remaining" >/dev/null
+test "$(tm display-message -p -t "$remaining" '#{session_name}')" = 'Project #{pane_id} Ω;'
+test "$(tm display-message -p -t "$other" '#{@rk_source_window}')" = "W:#{session_id}. #' Ω;"
 pid=$("$scratch/core" spawn unused)
 for _ in {1..50}; do [ -f "$RK_TEST_WORKSPACE/argv" ] && break; sleep .1; done
 python3 - "$RK_TEST_WORKSPACE/argv" <<'PY'

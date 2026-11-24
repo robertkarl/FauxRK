@@ -204,7 +204,7 @@ static NSString *safeName(NSString *source) {
 - (NSArray<NSDictionary *> *)panes:(NSError **)error {
     NSArray *fields = @[@"pane_id",@"session_name",@"window_name",@"pane_current_command",@"pane_current_path",
         @"pane_title",@"window_activity",@"@rk_managed",@"@rk_pane",@"@rk_id",@"@rk_preset",
-        @"session_attached",@"session_id",@"window_id",@"pane_pid",@"pid",@"start_time"];
+        @"session_attached",@"session_id",@"window_id",@"pane_pid",@"pid",@"start_time",@"@rk_source_session"];
     NSString *format = recordFormat(fields);
     NSError *listError;
     NSString *output = [self tmux:@[@"-N", @"list-panes", @"-a", @"-F", format] error:&listError];
@@ -225,7 +225,7 @@ static NSString *safeName(NSString *source) {
         [seen addObject:f[0]];
         BOOL managed = [f[7] isEqual:@"1"] && [f[8] isEqual:f[0]] && [f[9] length];
         [rows addObject:@{@"id":f[0], @"session":f[1], @"window":f[2],
-            @"command":f[3], @"path":f[4], @"title":f[5],
+            @"command":f[3], @"path":f[4], @"title":f[5], @"capturedLabel":managed ? f[17] : @"",
             @"activity":f[6], @"managed":@(managed), @"focused":@([f[0] isEqual:focus]), @"attached":@([f[11] integerValue] > 0),
             @"target":liveTarget(f[0],gen,managed ? f[9] : nil), @"sessionID":f[12], @"windowID":f[13], @"panePID":f[14], @"rkID":managed ? f[9] : @"", @"preset":managed ? f[10] : @""}];
     }
@@ -236,7 +236,7 @@ static NSString *safeName(NSString *source) {
     NSString *pid = paneNumber(target);
     if (!numericID(pid, '%')) return RKFail(error, @"Invalid tmux pane identifier.");
     NSArray *fields = @[@"session_id",@"@rk_managed",@"@rk_pane",@"pane_current_command",@"window_name",
-        @"pane_current_path",@"@rk_id",@"session_windows",@"window_panes",@"pid",@"start_time",@"pane_pid",@"socket_path"];
+        @"pane_current_path",@"@rk_id",@"session_windows",@"window_panes",@"pid",@"start_time",@"pane_pid",@"socket_path",@"session_name"];
     NSString *line = [self tmux:@[@"display-message",@"-p",@"-t",pid,recordFormat(fields)] error:error];
     if (!line) return nil;
     NSArray *f = [readRecords(line,fields.count) firstObject];
@@ -246,7 +246,7 @@ static NSString *safeName(NSString *source) {
     NSString *live = liveTarget(pid, gen, managed ? f[6] : nil);
     if (![target isEqual:pid] && ![target isEqual:live]) return RKFail(error, @"This pane has changed. Refresh the card before acting.");
     if (required && !managed) return RKFail(error, @"This pane is no longer managed by FauxRK.");
-    return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5], @"socketPath":f[12]};
+    return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5], @"socketPath":f[12], @"session":f[13]};
 }
 
 // The condition and its command execute in the tmux server's command queue.
@@ -310,33 +310,64 @@ static NSString *safeName(NSString *source) {
     return pid;
 }
 
+- (NSString *)stageCaptureFor:(NSDictionary *)meta error:(NSError **)error {
+    NSString *base = [NSString stringWithFormat:@"%@-%@",meta[@"session"],meta[@"window"]];
+    // new-session expands formats in -s. The empty trailing format also keeps
+    // a literal trailing semicolon out of tmux's command-separator parser.
+    NSString *literal = [base stringByReplacingOccurrencesOfString:@"#" withString:@"##"];
+    for (NSUInteger ordinal = 1; ; ordinal++) {
+        NSString *suffix = ordinal == 1 ? @"" : [NSString stringWithFormat:@"-%lu",(unsigned long)ordinal];
+        NSString *name = [NSString stringWithFormat:@"%@%@#{?1,,}",literal,suffix];
+        NSError *failure;
+        NSString *output = [self tmux:@[@"new-session",@"-dP",@"-F",@"#{session_id} #{pane_id} #{pid}-#{start_time}-#{pane_pid}",
+                                        @"-s",name,@"-n",@"Capture",@"-x",@"112",@"-y",@"38",@"/bin/sleep 30"] error:&failure];
+        if (output) return trim(output);
+        if (![failure.localizedDescription hasPrefix:@"duplicate session:"]) {
+            if (error) *error = failure;
+            return nil;
+        }
+    }
+}
+
 - (BOOL)capture:(NSString *)targetID error:(NSError **)error {
     @synchronized (self) {
         NSString *pid = paneNumber(targetID);
         NSDictionary *meta = [self metadata:targetID managed:NO error:error];
         if (!meta) return NO;
         if ([meta[@"managed"] boolValue]) return YES;
-        NSString *uuid = NSUUID.UUID.UUIDString.lowercaseString;
-        NSString *name = [NSString stringWithFormat:@"rk-%@-%@",safeName([meta[@"path"] lastPathComponent]),[uuid substringToIndex:8]];
-        NSString *target = [NSString stringWithFormat:@"=%@:",name];
-        // Break/join always requires somewhere to move. The staging pane expires
-        // independently if the app is closed between these two requests.
-        NSString *newID = [self tmux:@[@"new-session",@"-d",@"-P",@"-F",@"#{pane_id}",@"-s",name,@"-n",safeName(meta[@"window"]),@"-x",@"112",@"-y",@"38",@"/bin/sleep 30"] error:error];
-        if (!newID) return NO;
-        NSString *staging = trim(newID);
-        if (!numericID(staging, '%')) return RKRefuse(error,@"Invalid staging pane.");
-        NSString *sourceGeneration = [meta[@"target"] componentsSeparatedByString:@"|"][1];
-        NSString *check = [NSString stringWithFormat:@"#{&&:#{==:%@,%@},#{!=:#{@rk_pane},%@}}",generationFormat(),sourceGeneration,pid];
-        NSString *move = [NSString stringWithFormat:@"join-pane -d -s %@ -t %@",pid,staging];
-        NSArray *cmd = @[@"set-option",@"-t",target,@"@rk_managed",@"1",
-            @";",@"set-option",@"-t",target,@"@rk_pane",pid,
-            @";",@"set-option",@"-t",target,@"@rk_id",uuid,
-            @";",@"if-shell",@"-F",@"-t",pid,check,move,@"display-message -p RK_TARGET_CHANGED",
-            @";",@"kill-pane",@"-t",staging];
-        NSString *result = [self tmux:cmd error:error];
-        if (!result) return NO; // Only our expiring placeholder can remain.
-        if ([trim(result) isEqual:@"RK_TARGET_CHANGED"]) return RKRefuse(error,@"This pane changed before FauxRK could capture it.");
-        return YES;
+
+        NSString *stage = [self stageCaptureFor:meta error:error];
+        if (!stage) return NO;
+        NSArray *fields = [stage componentsSeparatedByString:@" "];
+        if (fields.count != 3 || !numericID(fields[0], '$') || !numericID(fields[1], '%'))
+            return RKRefuse(error,@"Invalid capture destination.");
+        NSString *session = fields[0], *placeholder = fields[1];
+        NSString *stageCheck = [NSString stringWithFormat:
+            @"#{&&:#{==:#{session_id},%@},#{&&:#{==:%@,%@},#{&&:#{==:#{session_windows},1},#{==:#{window_panes},1}}}}",
+            session,generationFormat(),fields[2]];
+
+        // Only numeric IDs, generation values and the UUID enter this command.
+        // tmux copies the live names as literal option values before moving.
+        NSString *move = [NSString stringWithFormat:
+            @"if-shell -F -t %@ '%@' { "
+             "set-option -pF -t %@ @rk_source_session '#{session_name}' ; "
+             "set-option -pF -t %@ @rk_source_window '#{window_name}' ; "
+             "set-option -t %@ @rk_managed 1 ; set-option -t %@ @rk_pane %@ ; set-option -t %@ @rk_id %@ ; "
+             "join-pane -d -s %@ -t %@ ; kill-pane -t %@ ; "
+             "rename-window -t %@ '#{@rk_source_window}' ; rename-session -t %@ '#{@rk_source_session}' "
+             "} { display-message -p RK_STAGE_CHANGED }",
+             placeholder,stageCheck,pid,pid,session,session,pid,session,NSUUID.UUID.UUIDString.lowercaseString,
+             pid,placeholder,placeholder,pid,session];
+        NSError *failure;
+        NSString *result = [self checkedCommand:move target:meta[@"target"] single:NO error:&failure];
+        // With siblings, the source still owns its name. The isolated session
+        // already has its available session-window name from stageCaptureFor:.
+        if (!result && [failure.localizedDescription hasPrefix:@"duplicate session:"]) return YES;
+        if (result && ![trim(result) isEqual:@"RK_STAGE_CHANGED"]) return YES;
+        [self checkedCommand:[@"kill-pane -t " stringByAppendingString:placeholder]
+                      target:liveTarget(placeholder,fields[2],nil) single:NO error:nil];
+        if (error) *error = failure ?: RKFailure(@"The capture destination changed.");
+        return NO;
     }
 }
 
