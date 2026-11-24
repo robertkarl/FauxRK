@@ -35,6 +35,7 @@
 @property (nonatomic) NSDictionary<NSString *, NSDictionary *> *paneByID;
 @property (nonatomic) NSDictionary<NSString *, NSDictionary *> *requests;
 @property (nonatomic) NSArray *attentionSnapshot;
+@property (nonatomic) NSDictionary<NSArray *, NSView *> *attentionViews;
 @end
 
 @implementation RKSidebar
@@ -285,7 +286,13 @@
     if ([snapshot isEqual:self.attentionSnapshot]) return;
     self.attentionSnapshot = snapshot;
     NSMutableArray *rows = [NSMutableArray array];
-    for (NSArray *entry in snapshot) [rows addObject:[self attentionRow:entry]];
+    NSMutableDictionary *views = [NSMutableDictionary dictionaryWithCapacity:snapshot.count];
+    for (NSArray *entry in snapshot) {
+        NSView *row = self.attentionViews[entry] ?: [self attentionRow:entry];
+        views[entry] = row;
+        [rows addObject:row];
+    }
+    self.attentionViews = views;
     RKReplaceChildren(self.attentionBody, rows);
     self.requestCount.stringValue = [@(rows.count) stringValue];
     self.requestCount.tint = rows.count ? RKTintRed : RKTintMuted;

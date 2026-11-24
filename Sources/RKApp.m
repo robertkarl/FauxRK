@@ -24,6 +24,7 @@
 @property NSString *lastPollError;
 @property NSDictionary<NSString *, NSString *> *targets;
 @property NSMutableSet<NSString *> *pendingCaptures;
+@property NSMutableSet<NSString *> *pendingAnswers;
 @end
 
 @implementation RKApp
@@ -33,6 +34,7 @@
     self.monitor = [[RKMonitor alloc] initWithCore:self.core];
     self.worker = dispatch_queue_create("net.robertkarl.RK.agent-control", DISPATCH_QUEUE_SERIAL);
     self.pendingCaptures = [NSMutableSet set];
+    self.pendingAnswers = [NSMutableSet set];
     self.sidebar = [[RKSidebar alloc] initWithDelegate:self];
     __weak typeof(self) weakSelf = self;
     self.voice = [[RKVoice alloc] initWithStatus:^(NSString *message) { [weakSelf.sidebar showStatus:message]; }];
@@ -197,8 +199,10 @@
     [self perform:^BOOL(NSError **error) { [self.monitor markRead:paneID fingerprint:fingerprint]; return YES; } then:nil];
 }
 - (void)answerPane:(NSString *)paneID fingerprint:(NSString *)fingerprint choice:(NSDictionary *)choice {
+    if ([self.pendingAnswers containsObject:fingerprint]) return;
+    [self.pendingAnswers addObject:fingerprint];
     [self perform:^BOOL(NSError **error) { return [self.monitor answer:choice pane:paneID fingerprint:fingerprint error:error]; }
-            then:nil];
+            then:^(BOOL ok) { [self.pendingAnswers removeObject:fingerprint]; }];
 }
 
 - (NSMenu *)submenu:(NSString *)name on:(NSMenu *)bar {
