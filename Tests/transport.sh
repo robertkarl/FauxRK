@@ -16,7 +16,7 @@ import os, shlex, sys
 from pathlib import Path
 args = sys.argv[1:]
 assert args[-3:-1] == ["--", "test@Debra"]
-assert "-T" in args and "BatchMode=yes" in args
+assert "-T" in args and "BatchMode=yes" in args and "StrictHostKeyChecking=yes" in args
 account = Path(os.environ["RK_FIXTURE_ACCOUNT"])
 with (account / "connections").open("a") as log:
     log.write("connected\n")

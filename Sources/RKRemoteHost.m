@@ -70,7 +70,7 @@ static NSString *installCommand(NSData *binary) {
 // EOF or a timeout invalidates the generation and wakes every waiter.
 @interface RKSSHChannel : NSObject
 - (instancetype)initWithExecutable:(NSString *)executable destination:(NSString *)destination helper:(NSURL *)helper;
-- (BOOL)failed;
+- (BOOL)reportedLoss;
 - (void)close:(NSString *)reason;
 - (id)request:(NSString *)op args:(NSDictionary *)args timeout:(NSTimeInterval)timeout error:(NSError **)error;
 @end
@@ -82,7 +82,7 @@ static NSString *installCommand(NSData *binary) {
     NSData *_helper;
     NSString *_diagnostic;
     NSError *_failure;
-    BOOL _ready, _uploadRequested;
+    BOOL _ready, _uploadRequested, _lossReported;
     NSUInteger _scanned;
     NSMutableDictionary<NSString *, RKPendingRequest *> *_pending;
     dispatch_queue_t _outputQueue;
@@ -100,11 +100,11 @@ static NSString *installCommand(NSData *binary) {
     return self;
 }
 
-- (BOOL)failed {
+- (BOOL)reportedLoss {
     [_state lock];
-    BOOL failed = _failure != nil;
+    BOOL reported = _failure && _lossReported;
     [_state unlock];
-    return failed;
+    return reported;
 }
 
 - (void)close:(NSString *)reason {
@@ -131,7 +131,7 @@ static NSString *installCommand(NSData *binary) {
         NSPipe *input = [NSPipe pipe], *output = [NSPipe pipe], *diagnostics = [NSPipe pipe];
         NSTask *task = [NSTask new];
         task.executableURL = [NSURL fileURLWithPath:executable];
-        task.arguments = @[@"-T",@"-o",@"BatchMode=yes",@"-o",@"ConnectTimeout=5",@"-o",@"ConnectionAttempts=1",
+        task.arguments = @[@"-T",@"-o",@"BatchMode=yes",@"-o",@"StrictHostKeyChecking=yes",@"-o",@"ConnectTimeout=5",@"-o",@"ConnectionAttempts=1",
             @"-o",@"ServerAliveInterval=5",@"-o",@"ServerAliveCountMax=2",@"-o",@"ClearAllForwardings=yes",
             @"--",destination,installCommand(binary)];
         task.standardInput = input;
@@ -256,6 +256,7 @@ static NSString *installCommand(NSData *binary) {
     }
     if (!_ready || _failure) {
         BOOL timedOut = snapshot && !_failure;
+        if (_failure || timedOut) _lossReported = YES;
         NSError *cause = _failure ?: RKSSHError(timedOut ? @"Timed out connecting to the remote helper." : @"The remote host is disconnected.");
         [_state unlock];
         if (timedOut) [self close:cause.localizedDescription];
@@ -278,6 +279,7 @@ static NSString *installCommand(NSData *binary) {
         timedOutTask = _task;
         [_state broadcast];
     }
+    if (!value && !pending.error && _failure) _lossReported = YES;
     BOOL uncertain = !value && !pending.error && pending.submitted && !snapshot && ![op isEqual:@"preview"] && ![op isEqual:@"attach"];
     [_pending removeObjectForKey:identifier];
     [_state unlock];
@@ -310,7 +312,7 @@ static NSString *installCommand(NSData *binary) {
 - (id)request:(NSString *)operation arguments:(NSDictionary *)arguments error:(NSError **)error {
     RKSSHChannel *channel;
     @synchronized (self) {
-        if (!_retired && [operation isEqual:@"snapshot"] && (!_channel || _channel.failed)) {
+        if (!_retired && [operation isEqual:@"snapshot"] && (!_channel || _channel.reportedLoss)) {
             _channel = [[RKSSHChannel alloc] initWithExecutable:self.sshExecutable destination:_destination helper:_helperURL];
         }
         channel = _channel;

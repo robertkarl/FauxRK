@@ -1,4 +1,5 @@
 #import "RKHost.h"
+#import <signal.h>
 
 @interface FixtureHost : RKRemoteHost
 @end
@@ -66,6 +67,10 @@ int main(void) { @autoreleasepool {
     check([[NSString stringWithContentsOfFile:path(@"sent") encoding:NSUTF8StringEncoding error:nil] isEqual:@"once\n"],@"A mutation was replayed");
     NSDictionary *after = [NSFileManager.defaultManager attributesOfItemAtPath:installedPath error:nil];
     check([attrs[NSFileSystemFileNumber] isEqual:after[NSFileSystemFileNumber]],@"Identical helper was reinstalled");
+    kill([two[@"pid"] intValue], SIGTERM);
+    [NSThread sleepForTimeInterval:.15];
+    check(![h request:@"snapshot" arguments:@{} error:&error] && [error.domain isEqual:RKTransportErrorDomain],@"An idle disconnect was hidden by transparent reconnection");
+    snapshot(h);
     check(![h request:@"hang" arguments:@{} error:&error] && error.code==2,@"Timed out request did not become unconfirmed");
     snapshot(h);
     [h disconnect];
