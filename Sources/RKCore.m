@@ -91,6 +91,8 @@ static NSString *runTask(NSString *binary, NSArray<NSString *> *args, NSData *in
     task.standardInput = in ?: NSFileHandle.fileHandleWithNullDevice;
     task.standardOutput = output;
     task.standardError = errors;
+    dispatch_semaphore_t exited = dispatch_semaphore_create(0);
+    task.terminationHandler = ^(__unused NSTask *finished) { dispatch_semaphore_signal(exited); };
     if (![task launchAndReturnError:error]) return nil;
     __block NSData *diagnostic;
     dispatch_group_t io = dispatch_group_create();
@@ -103,7 +105,7 @@ static NSString *runTask(NSString *binary, NSArray<NSString *> *args, NSData *in
         });
     }
     NSData *result = [output.fileHandleForReading readDataToEndOfFile];
-    [task waitUntilExit];
+    dispatch_semaphore_wait(exited, DISPATCH_TIME_FOREVER);
     dispatch_group_wait(io, DISPATCH_TIME_FOREVER);
     if (task.terminationStatus != 0) {
         NSString *message = trim([[NSString alloc] initWithData:diagnostic encoding:NSUTF8StringEncoding] ?: @"");
@@ -238,18 +240,33 @@ static NSString *safeName(NSString *source) {
     return @{@"target":live, @"single":@([f[7] isEqual:@"1"] && [f[8] isEqual:@"1"]), @"sessionID":f[0], @"managed":@(managed), @"command":f[3], @"window":f[4], @"path":f[5]};
 }
 
-// Recheck identity inside the tmux server's command queue, alongside each
-// mutation. The data in command is fixed syntax, numeric IDs or generated UUIDs.
-- (BOOL)apply:(NSString *)command meta:(NSDictionary *)meta single:(BOOL)single error:(NSError **)error {
-    NSArray *parts = [meta[@"target"] componentsSeparatedByString:@"|"];
+// The condition and its command execute in the tmux server's command queue.
+// The data in command is fixed syntax, numeric IDs or generated UUIDs.
+- (NSString *)checkedCommand:(NSString *)command target:(NSString *)target single:(BOOL)single error:(NSError **)error {
+    NSArray *parts = [target componentsSeparatedByString:@"|"];
+    if (parts.count != 3 || !numericID(parts[0], '%')) return RKFail(error,@"Invalid pane identity.");
     NSString *generation = parts[1], *uuid = parts[2], *pid = parts[0];
-    if (![[NSUUID alloc] initWithUUIDString:uuid]) return RKRefuse(error, @"Invalid ownership marker.");
-    NSString *check = [NSString stringWithFormat:@"#{&&:#{==:%@,%@},#{&&:#{==:#{@rk_id},%@},#{&&:#{==:#{@rk_pane},%@},#{==:#{@rk_managed},1}}}}", generationFormat(), generation, uuid, pid];
+    NSCharacterSet *numbers = [NSCharacterSet characterSetWithCharactersInString:@"0123456789-"];
+    if (!generation.length || [generation rangeOfCharacterFromSet:numbers.invertedSet].location != NSNotFound)
+        return RKFail(error,@"Invalid pane generation.");
+    NSString *ownership;
+    if (uuid.length) {
+        if (![[NSUUID alloc] initWithUUIDString:uuid]) return RKFail(error, @"Invalid ownership marker.");
+        ownership = [NSString stringWithFormat:@"#{&&:#{==:#{@rk_id},%@},#{&&:#{==:#{@rk_pane},%@},#{==:#{@rk_managed},1}}}",uuid,pid];
+    } else {
+        ownership = [NSString stringWithFormat:@"#{!=:#{@rk_pane},%@}",pid];
+    }
+    NSString *check = [NSString stringWithFormat:@"#{&&:#{==:%@,%@},%@}",generationFormat(),generation,ownership];
     if (single) check = [NSString stringWithFormat:@"#{&&:%@,#{&&:#{==:#{session_windows},1},#{==:#{window_panes},1}}}",check];
-    NSString *result = [self tmux:@[@"if-shell",@"-F",@"-t",pid,check,command,@"display-message -p RK_TARGET_CHANGED"] error:error];
-    if (!result) return NO;
-    if ([trim(result) isEqual:@"RK_TARGET_CHANGED"]) return RKRefuse(error,@"This pane or session changed. Refresh the card before acting.");
-    return YES;
+    NSString *stale = NSUUID.UUID.UUIDString;
+    NSString *otherwise = [@"display-message -p " stringByAppendingString:stale];
+    NSString *result = [self tmux:@[@"if-shell",@"-F",@"-t",pid,check,command,otherwise] error:error];
+    if ([trim(result) isEqual:stale]) return RKFail(error,@"This pane or session changed. Refresh the card before acting.");
+    return result;
+}
+
+- (BOOL)apply:(NSString *)command meta:(NSDictionary *)meta single:(BOOL)single error:(NSError **)error {
+    return [self checkedCommand:command target:meta[@"target"] single:single error:error] != nil;
 }
 
 - (NSString *)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt error:(NSError **)error {
@@ -358,9 +375,10 @@ static NSString *safeName(NSString *source) {
 
 - (NSString *)screen:(NSString *)targetID error:(NSError **)error {
     NSString *pid = paneNumber(targetID);
-    if (![targetID isEqual:pid] && ![self metadata:targetID managed:NO error:error]) return nil;
     if (!numericID(pid, '%')) return RKFail(error,@"Invalid tmux pane identifier.");
-    return [self tmux:@[@"capture-pane",@"-p",@"-J",@"-t",pid] error:error];
+    if ([targetID isEqual:pid]) return [self tmux:@[@"capture-pane",@"-p",@"-J",@"-t",pid] error:error];
+    NSString *command = [NSString stringWithFormat:@"capture-pane -p -J -t %@",pid];
+    return [self checkedCommand:command target:targetID single:NO error:error];
 }
 
 - (BOOL)interrupt:(NSString *)pid error:(NSError **)error {
