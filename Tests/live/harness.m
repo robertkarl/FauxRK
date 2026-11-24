@@ -34,7 +34,10 @@ static NSString *tail(NSString *s, NSUInteger n) {
 
 int main(int argc, const char **argv) { @autoreleasepool {
     NSString *sock = NSProcessInfo.processInfo.environment[@"RK_TMUX_SOCKET"];
-    if (!sock.isAbsolutePath || ![sock hasPrefix:@"/tmp/rkqa."]) { fprintf(stderr, "refusing: RK_TMUX_SOCKET must be /tmp/rkqa.*\n"); return 2; }
+    NSString *scratch = [NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:@"build/tmp/"];
+    if (!sock.isAbsolutePath || ![sock.stringByStandardizingPath hasPrefix:scratch]) {
+        fprintf(stderr, "Run from the repository with RK_TMUX_SOCKET under build/tmp/.\n"); return 2;
+    }
     [NSUserDefaults.standardUserDefaults setVolatileDomain:@{@"RKHelperProvider":@"off"} forName:NSArgumentDomain];
     NSMutableArray *a = [NSMutableArray new];
     for (int i = 1; i < argc; i++) [a addObject:@(argv[i])];

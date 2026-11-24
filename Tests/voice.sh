@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-work=$(mktemp -d)
+mkdir -p build/tmp
+work=$(mktemp -d "$PWD/build/tmp/voice.XXXXXX")
+export TMPDIR="$work"
 trap 'rm -rf "$work"' EXIT
 say -o "$work/speech.wav" --data-format=LEI16@16000 'Please inspect the green building.'
 xcrun clang -fobjc-arc -fmodules -Wall -I Sources -framework Cocoa -framework AVFoundation \

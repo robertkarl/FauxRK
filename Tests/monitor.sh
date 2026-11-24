@@ -1,10 +1,12 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-work=$(mktemp -d -t rk-monitor-test)
+mkdir -p build/tmp
+work=$(mktemp -d "$PWD/build/tmp/monitor.XXXXXX")
+export TMPDIR="$work"
 # Alias fixtures create their own tmux server, including when running inside the user's tmux.
-export RK_TMUX_SOCKET="rk-monitor-test-$(uuidgen)"
-trap 'tmux -L "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+export RK_TMUX_SOCKET="$work/tmux.sock"
+trap 'tmux -S "$RK_TMUX_SOCKET" kill-server >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 xcrun clang -fobjc-arc -framework Cocoa Sources/RKCore.m Sources/RKPaneScreen.m Sources/RKHelper.m Sources/RKMonitor.m Tests/monitor.m -o "$work/tests"
 "$work/tests"
 
@@ -22,15 +24,15 @@ ZSH
 # A keeper session allows verifying helper cleanup and window ID uniqueness across calls.
 export ZDOTDIR="$work/zsh"
 export RK_HELPER_FIXTURE_LOG="$work/calls"
-tmux -L "$RK_TMUX_SOCKET" -f /dev/null new-session -d -s fixture-keeper 'sleep 120'
+tmux -S "$RK_TMUX_SOCKET" -f /dev/null new-session -d -s fixture-keeper 'sleep 120'
 "$work/tests" sonnet
 "$work/tests" sonnet
 awk -F '|' '$1 ~ /^rk-helpers-/ && $2 ~ /^@[0-9]+$/ && $3 == "1" && $4 == "" { windows[$2]=1; n++ } END { exit !(n==2 && length(windows)==2) }' "$work/calls"
-test "$(tmux -L "$RK_TMUX_SOCKET" list-sessions -F '#{session_name}')" = fixture-keeper
+test "$(tmux -S "$RK_TMUX_SOCKET" list-sessions -F '#{session_name}')" = fixture-keeper
 
 if [ "${RK_TEST_LIVE_SONNET:-0}" = 1 ]; then
   # A fresh server must load the actual user's zsh environment.
-  tmux -L "$RK_TMUX_SOCKET" kill-server
+  tmux -S "$RK_TMUX_SOCKET" kill-server
   unset ZDOTDIR RK_HELPER_FIXTURE_LOG
   "$work/tests" sonnet
 fi
