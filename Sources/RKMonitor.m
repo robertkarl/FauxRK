@@ -202,6 +202,22 @@ static NSString *RKHash(NSString *s) {
         return sent;
     }
 }
+- (BOOL)steer:(NSString *)text toTarget:(NSString *)target error:(NSError **)error {
+    // A text send pastes and presses Return. If a chooser appeared after the
+    // card last refreshed, Return could select its default instead of steering.
+    @synchronized (_core) {
+        NSString *screen = [_core screen:target error:error];
+        if (!screen) return NO;
+        NSArray *lines = RKLines(screen);
+        NSDictionary *current = RKClassify(lines, @{});
+        BOOL interactiveFooter = RKMatches(lines.lastObject ?: @"", @"^(?:press )?enter (?:to )?(?:select|confirm|continue).*esc");
+        if ([current[@"choices"] count] || interactiveFooter) {
+            if (error) *error = RKMonitorError(@"This agent is showing a choice menu. Answer its current request in Needs attention.");
+            return NO;
+        }
+        return [_core sendText:text toPane:target error:error];
+    }
+}
 - (NSString *)preview:(NSString *)pid error:(NSError **)error {
     NSString *screen = [_core screen:pid error:error];
     if (!screen) return nil;

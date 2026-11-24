@@ -12,14 +12,21 @@ NSArray<NSString *> *RKLines(NSString *screen) {
     return lines;
 }
 static BOOL RKChrome(NSString *s) {
-    return RKMatches(s, @"^[─━═╭╮╰╯│┌┐└┘┆ ─-]+$|^[⠀-⣿ ]+$|^← for agents|^Worked for [0-9]|^[✻✶✳✽✢✦✧].+ for [0-9]|^\\? for shortcuts|^[⏵▶›▸ ]*(bypass permissions|accept edits) on|context (left|remaining)$|^gpt-[^ ]+.*[·•]|^[0-9]+% context|^shift\\+tab to|^(press )?(enter to (select|confirm)|esc to cancel)");
+    return RKMatches(s, @"^[─━═╭╮╰╯│┌┐└┘┆ ─-]+$|^[⠀-⣿ ]+$|^← for agents|^Worked for [0-9]|^[✻✶✳✽✢✦✧].+ for [0-9]|^\\? for shortcuts|^[⏵▶›▸ ]*(bypass permissions|accept edits|auto mode|plan mode) on|context (left|remaining)$|^gpt-[^ ]+.*[·•]|^[0-9]+% context|^shift\\+tab to|^(press )?(enter to (select|confirm)|esc to cancel)");
 }
 static BOOL RKPrompt(NSString *s) {
-    return RKMatches(s, @"^[❯›>]( |$)");
+    return RKMatches(s, @"^[❯›>](\\s|$)");
 }
 NSArray<NSString *> *RKContent(NSArray<NSString *> *all) {
     NSMutableArray *body = [NSMutableArray new];
-    for (NSString *s in all) if (!RKChrome(s)) [body addObject:s];
+    for (NSUInteger i = 0; i < all.count; i++) {
+        NSString *s = all[i];
+        if (!RKChrome(s)) [body addObject:s];
+        // Claude permits arbitrary user-written status lines. Its current input
+        // field is enclosed by dividers and followed by these out-of-band lines.
+        if (i && i + 1 < all.count && RKPrompt(s) && RKMatches(all[i-1], @"^[─━]{8,}$") &&
+            RKMatches(all[i+1], @"^[─━]{8,}$") && all.count - i < 8) break;
+    }
     return body;
 }
 BOOL RKBusy(NSArray *lines) {
@@ -54,7 +61,19 @@ static NSArray *RKMenuChoices(NSArray<NSString *> *labels, NSInteger selected) {
 }
 NSDictionary *RKClassify(NSArray<NSString *> *all, NSDictionary *pane) {
     if (!all.count) return nil;
-    NSArray *tail = [all subarrayWithRange:NSMakeRange(all.count - MIN(all.count, 12), MIN(all.count, 12))];
+    BOOL navigableMenu = RKMatches(all.lastObject, @"^enter (?:to )?(?:select|continue|confirm).*(?:navigate|esc)");
+    NSUInteger depth = navigableMenu ? all.count : MIN(all.count, 16);
+    NSArray *tail = [all subarrayWithRange:NSMakeRange(all.count - depth, depth)];
+    // The most recent checkbox heading marks the active question, even when
+    // option descriptions fill more than a dozen lines of the screen.
+    if (navigableMenu) {
+        for (NSInteger i = (NSInteger)tail.count - 1; i >= 0; i--) {
+            if (RKMatches(tail[i], @"^[☐☑] ")) {
+                tail = [tail subarrayWithRange:NSMakeRange(i + 1, tail.count - i - 1)];
+                break;
+            }
+        }
+    }
     NSArray *lines = RKContent(tail);
     if (!lines.count) return nil;
     NSString *last = lines.lastObject;
@@ -95,7 +114,7 @@ NSDictionary *RKClassify(NSArray<NSString *> *all, NSDictionary *pane) {
             [choices addObject:@{@"label":RKShort(label,140)}];
         } else if (!choices.count && !RKPrompt(s)) {
             [context addObject:s];
-        } else if (choices.count && !RKMatches(s, @"enter to (select|confirm)|esc to cancel|tab to|↑|↓")) {
+        } else if (choices.count && !navigableMenu && !RKMatches(s, @"enter to (select|confirm)|esc to cancel|tab to|↑|↓")) {
             // A new prompt/output after the menu means it is no longer current.
             [choices removeAllObjects]; selected = -1; [context removeAllObjects]; [context addObject:s];
         }

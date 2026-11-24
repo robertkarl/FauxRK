@@ -51,6 +51,27 @@ int main(int argc, const char **argv) { @autoreleasepool {
     core.page = @"Should I run tests?\n› 1. Yes, proceed (y)\n  2. No (n)\nPress enter to confirm or esc to cancel";
     row = [m update:panes][@"%1"];
     Check([row[@"choices"] count] == 2 && [row[@"choices"][0][@"keys"] isEqual:@[@"Enter"]], "missing terminal menu choices");
+    core.page = @"☐ Fixture\nWhich fixture label?\n❯ 1. Alpha\n     Use the Alpha fixture label.\n  2. Beta\n     Use the Beta fixture label.\n  3. Type something.\n─────────────────\n  4. Chat about this\nEnter to select · ↑/↓ to navigate · Esc to cancel";
+    row = [m update:panes][@"%1"];
+    NSArray *betaKeys = @[@"Down", @"Enter"];
+    Check([row[@"kind"] isEqual:@"input"] && [row[@"choices"] count] == 4 &&
+          [row[@"question"] isEqual:@"Which fixture label?"] && [row[@"choices"][1][@"keys"] isEqual:betaKeys], "Claude described question menu failed");
+    core.page = @"⏺ RK-LIVE-CHOSEN Beta\n✻ Churned for 4s · done 7:12 AM\n─────────────────\n❯ \n─────────────────\n[Fable 5.2] 📁 fable\n░░░░░░░░░░ 3% | $0.81 | ⏱️ 3m 3s\n⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents";
+    row = [m update:panes][@"%1"];
+    Check([row[@"kind"] isEqual:@"complete"] && [row[@"summary"] containsString:@"RK-LIVE-CHOSEN Beta"], "Claude custom status line hid completion");
+    core.page = @"Select Model and Effort\n  1. GPT-6.2-Sol\n› 2. GPT-6.2-Astra (current)\n  3. GPT-6-Luna\n↓\nenter select · esc back";
+    row = [m update:panes][@"%1"];
+    Check([row[@"kind"] isEqual:@"input"] && [row[@"choices"] count] == 3 &&
+          [row[@"choices"][2][@"keys"] isEqual:betaKeys], "Codex model picker lost its options");
+    core.page = @"Update available\n› 1. Update now\n2. Skip\n3. Skip until next version\nenter continue · esc skip";
+    row = [m update:panes][@"%1"];
+    Check([row[@"choices"] count] == 3 && [row[@"choices"][1][@"keys"] isEqual:betaKeys], "Codex update picker was not recognized");
+    core.sent = nil;
+    Check(![m steer:@"/model" toTarget:@"%1" error:NULL] && !core.sent, "ordinary steer selected update default");
+    core.page = @"This may be a new renderer.\nenter select · esc back";
+    Check(![m steer:@"input" toTarget:@"%1" error:NULL] && !core.sent, "ordinary steer selected an unparsed menu");
+    core.page = @"• Working (esc to interrupt)\n› Ask Codex to do anything";
+    Check([m steer:@"keep going" toTarget:@"%1" error:NULL] && [core.sent isEqual:@"keep going"], "working agent steer was refused");
     core.page = @"Running the tests\nWorking (esc to interrupt)";
     Check([m update:panes].count == 0, "resumed agent still marked blocked");
     core.page = @"• All 82 tests passed.\n Worked for 6s • 7:04 AM\n› Ask Codex to do anything\n GPT-6.2-Astra medium · /tmp · weekly 60% left · Context 3% used\n ← for agents · ? for shortcuts    ⚠ 3 warnings · f2 to view";
