@@ -116,8 +116,8 @@ static NSString *runTask(NSString *binary, NSArray<NSString *> *args, NSData *in
 
 static NSDictionary *presets(void) {
     return @{
-        @"Astra Medium": @[@"codex", @"-m", @"gpt-6.2-astra", @"-c", @"model_reasoning_effort=medium"],
-        @"Luna Medium": @[@"codex", @"-m", @"gpt-6-luna", @"-c", @"model_reasoning_effort=medium"],
+        @"Astra Medium": @[@"codex", @"--remote", @"unix://", @"-m", @"gpt-6.2-astra", @"-c", @"model_reasoning_effort=medium"],
+        @"Luna Medium": @[@"codex", @"--remote", @"unix://", @"-m", @"gpt-6-luna", @"-c", @"model_reasoning_effort=medium"],
         @"Fable Medium": @[@"claude", @"--model", @"fable", @"--effort", @"medium"],
         @"Opus": @[@"claude", @"--model", @"opus"]
     };
@@ -281,7 +281,11 @@ static NSString *safeName(NSString *source) {
     // argument, including newlines and quotes; it is never evaluated as code.
     NSMutableArray *argv = [args mutableCopy];
     if (prompt.length) [argv addObjectsFromArray:@[@"--",prompt]];
-    NSMutableString *launch = [@"exec /bin/zsh -lic 'exec \"$@\"' rk" mutableCopy];
+    // Codex CLI 0.171 otherwise switches to embedded mode for -c, losing
+    // access to the local daemon's shell executor. Its start command is idempotent.
+    NSString *entry = [args.firstObject isEqual:@"codex"] ?
+        @"codex app-server daemon start >/dev/null && exec \"$@\"" : @"exec \"$@\"";
+    NSMutableString *launch = [NSMutableString stringWithFormat:@"exec /bin/zsh -lic %@ rk",shellQuote(entry)];
     for (NSString *arg in argv) [launch appendFormat:@" %@",shellQuote(arg)];
     NSString *target = [NSString stringWithFormat:@"=%@:",name];
     NSString *tmuxCwd = [[cwd stringByReplacingOccurrencesOfString:@"#" withString:@"##"] stringByAppendingString:@"/."];
