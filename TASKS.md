@@ -29,4 +29,7 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 - [x] Run the live laptop → Debra RPC fixture. It captured a disposable process, steered literal Unicode text, answered a blocker, reconnected, spawned a real Luna Medium turn and cleaned up both sessions.
 - [x] Implement and test shared host operations, SSH transport, and per-user helper bootstrap.
 - [x] Integrate host picker, stale snapshot/draft handling, catch-up notifications, and local SSH terminal attachments.
-- [ ] Build the renamed app with the fork icon, review it, verify laptop → Debra, and publish.
+- [x] Bundle the fork icon and the version-matched helper. Verify app signing and the running laptop window with a live connection to Debra.
+- [x] Exercise simultaneous remote terminal attachments and stale-session refusal in real PTYs. Verify that a stalled iTerm Automation check leaves the attention poll responsive.
+- [ ] On the laptop desktop, press **Open in New Window** twice for one captured Debra agent and confirm two iTerm2 windows. Apple Events stayed pending in the SSH-driven desktop test.
+- [ ] Complete the release review and publish the verified build.

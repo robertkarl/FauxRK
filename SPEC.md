@@ -13,10 +13,10 @@ RK is a local macOS sidebar for talking to terminal agents. Build its native UI 
 
 ## FauxRK on the laptop
 
-- [ ] Select exactly one target, This Mac or Debra. Relaunch restores that selection. A deliberate switch clears the previous target's cards, previews, and drafts.
-- [ ] Selecting Debra establishes SSH, installs the matching per-user helper when needed, and starts it for the connection. Closing the UI leaves Debra's tmux agents running.
-- [ ] Remote snapshots, capture, preview, spawn, interrupts, approvals, steering, and confirmed End address Debra. Remote Spawn resolves only the three project shortcuts on Debra. Free text reaches the agent unchanged.
+- [x] Select exactly one target, This Mac or Debra. Relaunch restores that selection. A deliberate switch clears the previous target's cards, previews, and drafts.
+- [x] Selecting Debra establishes SSH, installs the matching per-user helper when needed, and starts it for the connection. Closing the UI leaves Debra's tmux agents running.
+- [x] Remote snapshots, capture, preview, spawn, interrupts, approvals, steering, and confirmed End address Debra. Remote Spawn resolves only the three project shortcuts on Debra. Free text reaches the agent unchanged.
 - [ ] Each Open in New Window opens local iTerm2, SSHs to Debra, and attaches to the guarded managed session.
-- [ ] A lost connection retains the last snapshot, last-seen time, and drafts. Sending is disabled until reconnect, and an interrupted submission is reported as unconfirmed and never automatically resent.
-- [ ] On reconnect, outstanding handoffs produce at most one catch-up notification. Live handoffs afterward notify individually.
-- [ ] The native bundle displays the FauxRK name and the selected four-tine fork icon while retaining local RK preferences and tmux ownership markers.
+- [x] A lost connection retains the last snapshot, last-seen time, and drafts. Sending is disabled until reconnect, and an interrupted submission is reported as unconfirmed and never automatically resent.
+- [x] On reconnect, outstanding handoffs produce at most one catch-up notification. Live handoffs afterward notify individually.
+- [x] The native bundle displays the FauxRK name and the selected four-tine fork icon while retaining local RK preferences and tmux ownership markers.
