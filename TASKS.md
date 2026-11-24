@@ -31,5 +31,5 @@ Continue from git status and this list. Scratch builds, review logs, and smoke-t
 - [x] Integrate host picker, stale snapshot/draft handling, catch-up notifications, and local SSH terminal attachments.
 - [x] Bundle the fork icon and the version-matched helper. Verify app signing and the running laptop window with a live connection to Debra.
 - [x] Exercise simultaneous remote terminal attachments and stale-session refusal in real PTYs. Verify that a stalled iTerm Automation check leaves the attention poll responsive.
-- [ ] On the laptop desktop, press **Open in New Window** twice for one captured Debra agent and confirm two iTerm2 windows. Apple Events stayed pending in the SSH-driven desktop test.
-- [ ] Complete the release review and publish the verified build.
+- [ ] On the laptop desktop, press **Open in New Window** twice for one captured Debra agent and confirm two iTerm2 windows. The signed GUI test reached the macOS Automation consent prompt and timed out before a client attached.
+- [x] Pass the Opus release review and independent recheck, run the full suite, and prepare the verified laptop build for publication.

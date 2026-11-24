@@ -1,13 +1,14 @@
-## Code Review: Native dashboard
+## FauxRK remote control review
 
-**Verdict: PASS**
+**Verdict: PASS** for the implementation through `689dcdc`.
 
-Reviewed the Objective-C dashboard changes and sidebar test on `release/native-dashboard` against `main`, including the final multiline choice controls.
+Fable reviewed the design and implementation. Opus ran the code review on a clean snapshot, built the app and helper, and reproduced a reply disappearing while a reconnected helper reclassified a question. A separate reviewer verified the corrections.
 
-### Findings
+- The sidebar keeps an edited reply for the same question through a transient missing or completed row. A new question, agent, or computer gets its own draft.
+- A dropped agent action leaves a dismissible, host-specific notice. Losing a read receipt does not overwrite a notice about a send. Reconnection reports the number of agents needing attention while inference settles.
+- Remote terminal attachments use the helper’s actual socket and verify ownership at attachment. Real PTY fixtures exercised four concurrent clients, literal shell metacharacters in the socket path, and stale identities.
+- Helper shutdown cleans up inference windows and temporary pane text. Notification receipts survive helper upgrades and stale reconnect banners are withdrawn after relaunch.
 
-No open blockers or warnings. The review found that stacked terminal choices could resize a 370-point sidebar to 229 points. The corrected card and attention controls preserve the user's window width.
+`make test` passed, including the sidebar, routing, SSH transport, monitor, terminal, notifications, and voice suites. The signed laptop dashboard connected to Debra. A live single-controller test covered capture, literal multiline steering, answers, read receipts, reconnect, interrupt, and a completed Luna Medium turn.
 
-### Verification
-
-The sidebar regression suite passed. An independent AppKit fixture presented a long blocker question, a long response label, and a short refusal. The window remained 370 points wide, the question wrapped to 45 points tall, and the long response occupied a 54-point button. The fixture found the expected controls by accessibility identifier. Reviewed the distinct identifiers for card actions, drafts, and corresponding attention choices.
+The live macOS iTerm2 test reached the Automation consent prompt and timed out before a client attached. Two native laptop windows remain a hands-on check. The terminal test also needs enough room under the macOS Unix socket path limit for its fixture.
