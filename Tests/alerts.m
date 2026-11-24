@@ -207,7 +207,9 @@ int main(void) {
         void (^open)(NSString *) = ^(NSString *identity){ opened=identity; };
         BOOL (^foreground)(void) = ^{ return front; };
         RKAlerts *alerts = [[RKAlerts alloc] initWithOpen:open center:(id)center defaults:defaults foreground:foreground];
-        NSArray *panes = @[Pane(@"%4",@"stable-A",YES), Pane(@"%5",@"stable-B",NO)];
+        NSMutableDictionary *captured = [Pane(@"%5",@"stable-B",NO) mutableCopy];
+        captured[@"capturedLabel"] = @"Release notes:writer";
+        NSArray *panes = @[Pane(@"%4",@"stable-A",YES), captured];
         NSDictionary *rows = @{@"%4":Row(@"a1"), @"%5":Row(@"b1")};
         [alerts updatePanes:@[] attention:@{}];
         Check(center.prompts == 0, @"First launch without captured agents stays quiet");
@@ -218,6 +220,7 @@ int main(void) {
         Check(center.prompts == 1 && center.posts.count == 1, @"One permission request, one pending banner");
         UNNotificationRequest *banner = center.posts.lastObject;
         Check([banner.identifier isEqual:@"stable-B"] && [banner.content.body isEqual:@"Proceed?"], @"B notifies while A has terminal focus");
+        Check([banner.content.title isEqual:captured[@"capturedLabel"]], @"Banner retains the discovery name");
         [center finishAdd:@"stable-B"];
         [alerts updatePanes:panes attention:rows];
         Check(center.posts.count == 1, @"Unchanged blocker only delivers once");

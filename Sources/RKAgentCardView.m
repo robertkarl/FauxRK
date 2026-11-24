@@ -1,6 +1,7 @@
 #import "RKAgentCardView.h"
 
 NSString *RKPaneTitle(NSDictionary *pane) {
+    if ([pane[@"capturedLabel"] length]) return pane[@"capturedLabel"];
     NSString *title = [pane[@"title"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *window = pane[@"window"] ?: @"";
     static NSSet<NSString *> *generic;
@@ -327,7 +328,10 @@ static NSView *Fact(NSString *caption, NSString *symbol, NSTextField *value) {
         [self updateControlLabels];
     }
     self.name.toolTip = name;
-    self.metadata.stringValue = [pane[@"preset"] length] ? pane[@"preset"] : pane[@"command"] ?: @"";
+    NSString *detail = [pane[@"preset"] length] ? pane[@"preset"] : pane[@"command"];
+    if ([pane[@"capturedLabel"] length] && [pane[@"title"] length]) detail = pane[@"title"];
+    self.metadata.stringValue = detail ?: @"";
+    self.metadata.toolTip = self.metadata.stringValue;
     RKTint tint = RKRequestTint(request);
     RKTint identityTint = AgentTint(pane);
     [self setAccent:identityTint];
