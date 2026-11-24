@@ -323,7 +323,7 @@
 
 - (void)openTerminalForPane:(NSString *)paneID {
     NSString *target = self.targets[paneID];
-    if (!target) return;
+    if (!target || !self.connected || self.route.retired) return;
     if (!self.isRemote) {
         RKRoute *local = self.route;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
