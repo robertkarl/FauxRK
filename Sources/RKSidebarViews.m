@@ -7,21 +7,21 @@ static NSColor *RKColor(CGFloat r, CGFloat g, CGFloat b) {
 
 NSColor *RKTintColor(RKTint tint) {
     switch (tint) {
-        case RKTintViolet: return RKColor(.70,.65,1);
-        case RKTintMint: return RKColor(.43,.90,.67);
-        case RKTintAmber: return RKColor(.98,.78,.43);
-        case RKTintRed: return RKColor(1,.56,.60);
-        case RKTintBlue: return RKColor(.46,.76,1);
-        default: return RKColor(.65,.68,.73);
+        case RKTintViolet: return RKColor(.72,.49,1);
+        case RKTintMint: return RKColor(.32,.94,.50);
+        case RKTintAmber: return RKColor(1,.79,.26);
+        case RKTintRed: return RKColor(1,.35,.38);
+        case RKTintBlue: return RKColor(.33,.67,1);
+        default: return RKColor(.74,.77,.83);
     }
 }
 
-NSColor *RKSurface(void) { return RKColor(.082,.090,.111); }
+NSColor *RKSurface(void) { return RKColor(.056,.066,.088); }
 
 NSTextField *RKLabel(NSString *text, CGFloat size, NSFontWeight weight) {
     NSTextField *label = [NSTextField labelWithString:text ?: @""];
     label.font = [NSFont systemFontOfSize:size weight:weight];
-    label.textColor = RKColor(.93,.94,.96);
+    label.textColor = RKColor(.97,.975,.99);
     label.lineBreakMode = NSLineBreakByTruncatingTail;
     [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     return label;
@@ -84,17 +84,99 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children) {
     }];
 }
 
+static NSColor *RKBlend(NSColor *base, NSColor *accent, CGFloat amount) {
+    return [base blendedColorWithFraction:amount ofColor:accent] ?: base;
+}
+
+static NSBezierPath *RKRoundedRect(NSRect bounds, CGFloat radius) {
+    return [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, .65, .65) xRadius:radius yRadius:radius];
+}
+
+static void RKFillRim(NSBezierPath *shape, NSColor *top, NSColor *bottom, NSColor *rim, CGFloat weight) {
+    NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:top endingColor:bottom];
+    [gradient drawInBezierPath:shape angle:-90];
+    [rim setStroke];
+    shape.lineWidth = weight;
+    [shape stroke];
+}
+
+@interface RKBadgeView ()
+@property (nonatomic) NSTextField *label;
+@property (nonatomic) BOOL showsDot;
+@end
+
+@implementation RKBadgeView
+- (instancetype)initWithText:(NSString *)text tint:(RKTint)tint showsDot:(BOOL)showsDot {
+    if (!(self = [super initWithFrame:NSZeroRect])) return nil;
+    _tint = tint;
+    _showsDot = showsDot;
+    _label = RKLabel(@"", 11.5, NSFontWeightSemibold);
+    _label.translatesAutoresizingMaskIntoConstraints = NO;
+    [_label setAccessibilityElement:NO];
+    [self addSubview:_label];
+    [self setAccessibilityElement:YES];
+    [self setAccessibilityRole:NSAccessibilityStaticTextRole];
+    self.stringValue = text;
+    [self updateInk];
+    [NSLayoutConstraint activateConstraints:@[
+        [_label.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:showsDot ? 18 : 8],
+        [_label.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+        [_label.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
+    ]];
+    return self;
+}
+
+- (void)setStringValue:(NSString *)value {
+    _stringValue = [value copy] ?: @"";
+    self.label.stringValue = _stringValue;
+    self.toolTip = _stringValue;
+    [self setAccessibilityValue:_stringValue];
+    [self invalidateIntrinsicContentSize];
+}
+
+- (NSSize)intrinsicContentSize {
+    return NSMakeSize(ceil(self.label.intrinsicContentSize.width) + (self.showsDot ? 26 : 16), self.neutralSurface ? 24 : 20);
+}
+
+- (void)updateInk {
+    self.label.textColor = self.neutralSurface ? RKColor(.94,.95,.97) : RKTintColor(self.tint);
+    self.needsDisplay = YES;
+}
+
+- (void)setTint:(RKTint)tint { _tint = tint; [self updateInk]; }
+- (void)setNeutralSurface:(BOOL)neutralSurface {
+    _neutralSurface = neutralSurface;
+    [self invalidateIntrinsicContentSize];
+    [self updateInk];
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    NSColor *tint = RKTintColor(self.tint);
+    NSColor *accent = self.neutralSurface ? RKColor(.46,.50,.58) : tint;
+    NSColor *fill = RKColor(.038,.043,.055);
+    NSBezierPath *shape = RKRoundedRect(self.bounds, NSHeight(self.bounds) / 2);
+    RKFillRim(shape, RKBlend(fill, accent, .12), RKBlend(fill, accent, .045), RKBlend(fill, accent, .72), 1);
+    if (self.showsDot) {
+        [tint setFill];
+        [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(7, floor(NSMidY(self.bounds)) - 3.5, 7, 7)] fill];
+    }
+}
+@end
+
 @interface RKActionButton ()
 @property (nonatomic, copy) dispatch_block_t invoke;
+@property (nonatomic) RKTint tint;
 @end
 
 @implementation RKActionButton
 + (instancetype)title:(NSString *)title symbol:(NSString *)symbol help:(NSString *)help tint:(RKTint)tint action:(dispatch_block_t)action {
     RKActionButton *button = [self new];
     button.title = title;
-    button.bezelStyle = NSBezelStyleRounded;
-    button.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
-    button.controlSize = NSControlSizeSmall;
+    button.tint = tint;
+    button.bordered = NO;
+    button.buttonType = NSButtonTypeMomentaryPushIn;
+    button.focusRingType = NSFocusRingTypeExterior;
+    button.font = [NSFont systemFontOfSize:12 weight:tint == RKTintViolet ? NSFontWeightSemibold : NSFontWeightMedium];
     button.contentTintColor = RKTintColor(tint);
     if (symbol.length) {
         button.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
@@ -110,44 +192,129 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children) {
     [button setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     return button;
 }
+
 - (void)performAction:(id)sender { if (self.invoke) self.invoke(); }
+- (BOOL)isPrimary { return self.tint == RKTintViolet && self.title.length && !self.plainAppearance; }
+
+- (void)setPlainAppearance:(BOOL)plain {
+    _plainAppearance = plain;
+    [self invalidateIntrinsicContentSize];
+    self.needsDisplay = YES;
+}
+
+- (NSSize)intrinsicContentSize {
+    if (!self.title.length) return NSMakeSize(self.plainAppearance ? 17 : 28, 24);
+    CGFloat width = ceil([self.title sizeWithAttributes:@{NSFontAttributeName:self.font}].width);
+    return NSMakeSize(width + (self.image ? 18 : 0) + (self.isPrimary ? 22 : 16), self.isPrimary ? 27 : 24);
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    NSColor *accent = self.contentTintColor ?: RKTintColor(self.tint);
+    NSBezierPath *shape = RKRoundedRect(self.bounds, self.isPrimary ? 7 : 5.5);
+    if (!self.plainAppearance) [self drawBezel:shape accent:accent];
+    NSColor *ink = self.title.length ? RKColor(.955,.962,.985) : accent;
+    [self drawContentsInRect:self.bounds color:self.enabled ? ink : [ink colorWithAlphaComponent:.43]];
+}
+
+- (void)drawBezel:(NSBezierPath *)shape accent:(NSColor *)accent {
+    NSColor *surface = RKColor(.048,.059,.079);
+    CGFloat strength = self.tint == RKTintMuted ? .38 : .79;
+    NSColor *rim = RKBlend(surface, accent, strength);
+    NSColor *top = RKBlend(surface, accent, self.highlighted ? .28 : .13);
+    NSColor *bottom = RKBlend(surface, accent, .038);
+    if (self.isPrimary) {
+        rim = RKColor(.49,.49,.99);
+        top = self.highlighted ? RKColor(.21,.20,.59) : RKColor(.24,.24,.76);
+        bottom = RKColor(.12,.13,.53);
+    }
+    if (!self.enabled) rim = RKBlend(surface, rim, .55);
+    RKFillRim(shape, top, bottom, rim, self.isPrimary || (!self.title.length && self.tint != RKTintMuted) ? 1.25 : 1);
+}
+
+- (void)drawContentsInRect:(NSRect)bounds color:(NSColor *)ink {
+    CGFloat icon = self.image ? (self.title.length ? 13 : 15) : 0;
+    CGFloat gap = self.title.length && icon ? 4 : 0;
+    NSMutableParagraphStyle *style = [NSMutableParagraphStyle new];
+    style.lineBreakMode = NSLineBreakByTruncatingTail;
+    NSDictionary *attributes = @{NSFontAttributeName:self.font, NSForegroundColorAttributeName:ink, NSParagraphStyleAttributeName:style};
+    NSSize title = [self.title sizeWithAttributes:attributes];
+    CGFloat textWidth = MIN(ceil(title.width), MAX(0, NSWidth(bounds) - icon - gap - 12));
+    CGFloat x = floor(NSMidX(bounds) - (textWidth + gap + icon) / 2);
+    if (icon) {
+        NSImageSymbolConfiguration *color = [NSImageSymbolConfiguration configurationWithHierarchicalColor:ink];
+        NSImage *image = [self.image imageWithSymbolConfiguration:color] ?: self.image;
+        CGFloat scale = icon / MAX(1, MAX(image.size.width, image.size.height));
+        NSSize size = NSMakeSize(image.size.width * scale, image.size.height * scale);
+        NSRect rect = NSMakeRect(x + (icon-size.width)/2, floor(NSMidY(bounds) - size.height/2), size.width, size.height);
+        [image drawInRect:rect fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+    }
+    if (textWidth) {
+        NSRect rect = NSMakeRect(x+icon+gap, floor(NSMidY(bounds)-title.height/2), textWidth, ceil(title.height));
+        [self.title drawInRect:rect withAttributes:attributes];
+    }
+}
+
+- (NSRect)focusRingMaskBounds { return self.bounds; }
+- (void)drawFocusRingMask { [RKRoundedRect(self.bounds, 6) fill]; }
 @end
 
 @interface RKPanelView ()
-@property (nonatomic) NSView *stripe;
 @property (nonatomic, readwrite) NSStackView *body;
+@property (nonatomic) RKTint accent;
 @end
 
 @implementation RKPanelView
 - (instancetype)initWithTint:(RKTint)tint {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
-    self.wantsLayer = YES;
-    self.layer.backgroundColor = RKSurface().CGColor;
-    self.layer.borderColor = RKColor(.20,.22,.27).CGColor;
-    self.layer.borderWidth = 1;
-    self.layer.cornerRadius = 9;
-    self.layer.masksToBounds = YES;
+    _accent = tint;
+    _showsAccentRail = tint != RKTintMuted;
     _body = RKColumn(9);
     _body.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_body];
-    _stripe = [[NSView alloc] init];
-    _stripe.translatesAutoresizingMaskIntoConstraints = NO;
-    _stripe.wantsLayer = YES;
-    [self addSubview:_stripe];
-    [self setAccent:tint];
     [NSLayoutConstraint activateConstraints:@[
         [_body.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:13],
         [_body.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-11],
         [_body.topAnchor constraintEqualToAnchor:self.topAnchor constant:10],
         [_body.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-10],
-        [_stripe.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [_stripe.widthAnchor constraintEqualToConstant:3],
-        [_stripe.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [_stripe.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
     ]];
     return self;
 }
-- (void)setAccent:(RKTint)tint { self.stripe.layer.backgroundColor = RKTintColor(tint).CGColor; }
+
+- (void)setAccent:(RKTint)tint { if (_accent != tint) { _accent = tint; self.needsDisplay = YES; } }
+- (void)setShowsAccentRail:(BOOL)value { _showsAccentRail = value; self.needsDisplay = YES; }
+- (void)setTintsSurface:(BOOL)value { _tintsSurface = value; self.needsDisplay = YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    NSColor *accent = RKTintColor(self.accent);
+    NSColor *base = RKColor(.033,.041,.056);
+    NSColor *top = RKBlend(RKSurface(), accent, self.tintsSurface ? .095 : .018);
+    NSColor *bottom = RKBlend(base, accent, self.tintsSurface ? .045 : 0);
+    NSColor *rim = self.tintsSurface ? RKBlend(base, accent, .64) : RKColor(.29,.34,.42);
+    NSBezierPath *shape = RKRoundedRect(self.bounds, 8);
+    RKFillRim(shape, top, bottom, rim, 1);
+    if (!self.showsAccentRail) return;
+    [NSGraphicsContext saveGraphicsState];
+    [shape addClip];
+    [accent setFill];
+    NSRectFill(NSMakeRect(0,0,4.5,NSHeight(self.bounds)));
+    [NSGraphicsContext restoreGraphicsState];
+}
+@end
+@interface RKPromptEditor : NSTextView
+@property (copy) void (^focusChanged)(BOOL);
+@end
+
+@implementation RKPromptEditor
+- (BOOL)becomeFirstResponder {
+    BOOL focused = [super becomeFirstResponder];
+    if (focused && self.focusChanged) self.focusChanged(YES);
+    return focused;
+}
+- (BOOL)resignFirstResponder {
+    BOOL resigned = [super resignFirstResponder];
+    if (resigned && self.focusChanged) self.focusChanged(NO);
+    return resigned;
+}
 @end
 
 @interface RKPromptView ()
@@ -160,16 +327,22 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children) {
 - (instancetype)initWithHint:(NSString *)hint {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     self.wantsLayer = YES;
-    self.layer.backgroundColor = RKColor(.052,.058,.073).CGColor;
+    self.layer.backgroundColor = RKColor(.073,.085,.106).CGColor;
     self.layer.cornerRadius = 6;
     self.layer.borderWidth = 1;
-    self.layer.borderColor = RKColor(.25,.27,.33).CGColor;
+    self.layer.borderColor = RKColor(.32,.36,.43).CGColor;
     NSScrollView *scroll = [NSScrollView new];
     scroll.drawsBackground = NO;
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
-    _editor = [NSTextView new];
+    RKPromptEditor *prompt = [RKPromptEditor new];
+    __weak typeof(self) weakSelf = self;
+    prompt.focusChanged = ^(BOOL focused) {
+        weakSelf.layer.borderColor = (focused ? RKColor(.56,.54,.98) : RKColor(.32,.36,.43)).CGColor;
+        weakSelf.layer.borderWidth = focused ? 1.5 : 1;
+    };
+    _editor = prompt;
     _editor.richText = NO;
     _editor.drawsBackground = NO;
     _editor.font = [NSFont systemFontOfSize:13];
@@ -200,7 +373,6 @@ void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children) {
         [_placeholder.topAnchor constraintEqualToAnchor:self.topAnchor constant:6],
         [self.heightAnchor constraintEqualToConstant:58]
     ]];
-    __weak typeof(self) weakSelf = self;
     _changeObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSTextDidChangeNotification object:_editor queue:nil usingBlock:^(NSNotification *note) {
         weakSelf.placeholder.hidden = weakSelf.editor.string.length > 0;
     }];

@@ -15,12 +15,22 @@ void RKAddFullWidth(NSStackView *column, NSView *child);
 NSView *RKInset(NSView *child, NSEdgeInsets insets);
 void RKReplaceChildren(NSStackView *stack, NSArray<NSView *> *children);
 
+@interface RKBadgeView : NSView
+@property (nonatomic, copy) NSString *stringValue;
+@property (nonatomic) RKTint tint;
+@property (nonatomic) BOOL neutralSurface;
+- (instancetype)initWithText:(NSString *)text tint:(RKTint)tint showsDot:(BOOL)showsDot;
+@end
+
 @interface RKActionButton : NSButton
+@property (nonatomic) BOOL plainAppearance;
 + (instancetype)title:(NSString *)title symbol:(NSString *)symbol help:(NSString *)help tint:(RKTint)tint action:(dispatch_block_t)action;
 @end
 
 @interface RKPanelView : NSView
 @property (nonatomic, readonly) NSStackView *body;
+@property (nonatomic) BOOL showsAccentRail;
+@property (nonatomic) BOOL tintsSurface;
 - (instancetype)initWithTint:(RKTint)tint;
 - (void)setAccent:(RKTint)tint;
 @end
