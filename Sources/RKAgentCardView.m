@@ -104,7 +104,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
     }]];
     [actions addArrangedSubview:RKSpring()];
     self.steerButton = [RKActionButton title:@"Steer" symbol:@"arrow.up" help:@"Send steering message" tint:RKTintViolet action:^{
-        NSString *text = weak.composer.editor.string;
+        NSString *text = weak.composer.editor.string.copy;
         if ([text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
             [weak.delegate steerPane:weak.paneID text:text];
         }
@@ -202,7 +202,7 @@ static NSTextField *WrappedLabel(CGFloat size) {
     RKAddFullWidth(self.questionBody, self.reply);
     [self fillSuggestionIfEmpty];
     RKActionButton *send = [RKActionButton title:@"Send reply" symbol:@"paperplane" help:@"Send edited reply to this request" tint:RKTintBlue action:^{
-        NSString *reply = weak.reply.editor.string;
+        NSString *reply = weak.reply.editor.string.copy;
         if (![reply stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return;
         [weak.delegate answerPane:weak.paneID fingerprint:fingerprint choice:@{@"text":reply, @"label":@"Reply", @"draft":@YES}];
     }];

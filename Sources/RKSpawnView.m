@@ -28,7 +28,7 @@
     [actions addArrangedSubview:RKSpring()];
     __weak typeof(self) weak = self;
     [actions addArrangedSubview:[RKActionButton title:@"Launch" symbol:@"arrow.up.right" help:@"Launch captured agent" tint:RKTintViolet action:^{
-        [weak.delegate spawnPreset:weak.presets.titleOfSelectedItem directory:weak.chosenPath.stringByExpandingTildeInPath prompt:weak.prompt.editor.string];
+        [weak.delegate spawnPreset:weak.presets.titleOfSelectedItem directory:weak.chosenPath.stringByExpandingTildeInPath prompt:weak.prompt.editor.string.copy];
     }]];
     RKAddFullWidth(self.body, actions);
     return self;
