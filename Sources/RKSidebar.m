@@ -24,6 +24,8 @@
 @property (nonatomic) NSStackView *content;
 @property (nonatomic) RKBadgeView *connection;
 @property (nonatomic) NSTextField *feedback;
+@property (nonatomic) RKPanelView *deliveryPanel;
+@property (nonatomic) NSTextField *deliveryText;
 @property (nonatomic) RKActionButton *pin;
 @property (nonatomic) RKSpawnView *launcher;
 @property (nonatomic) NSStackView *agentBody;
@@ -167,12 +169,43 @@
     [self.offlineDetails addArrangedSubview:self.retry];
     RKAddFullWidth(column, self.offlineDetails);
     self.feedback = RKDetail(@"");
+    self.feedback.accessibilityIdentifier = @"transient-status";
     self.feedback.maximumNumberOfLines = 3;
     self.feedback.lineBreakMode = NSLineBreakByWordWrapping;
     self.feedback.hidden = YES;
     self.feedback.textColor = RKTintColor(RKTintAmber);
     RKAddFullWidth(column, self.feedback);
+    RKAddFullWidth(column, [self buildDeliveryNotice]);
     return column;
+}
+
+- (NSView *)buildDeliveryNotice {
+    self.deliveryPanel = [[RKPanelView alloc] initWithTint:RKTintAmber];
+    self.deliveryPanel.tintsSurface = YES;
+    self.deliveryPanel.hidden = YES;
+    NSStackView *row = RKRow(6);
+    row.distribution = NSStackViewDistributionFill;
+    self.deliveryText = [NSTextField wrappingLabelWithString:@""];
+    self.deliveryText.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    self.deliveryText.textColor = RKTintColor(RKTintAmber);
+    self.deliveryText.accessibilityIdentifier = @"delivery-notice";
+    self.deliveryText.preferredMaxLayoutWidth = 230;
+    [self.deliveryText setContentCompressionResistancePriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [row addArrangedSubview:self.deliveryText];
+    __weak typeof(self) weak = self;
+    RKActionButton *dismiss = [RKActionButton title:@"" symbol:@"xmark" help:@"Dismiss delivery notice" tint:RKTintMuted action:^{
+        [weak.actions dismissDeliveryNotice];
+    }];
+    dismiss.availableOffline = YES;
+    dismiss.accessibilityIdentifier = @"dismiss-delivery-notice";
+    [row addArrangedSubview:dismiss];
+    RKAddFullWidth(self.deliveryPanel.body, row);
+    return self.deliveryPanel;
+}
+
+- (void)showDeliveryNotice:(NSString *)notice {
+    self.deliveryText.stringValue = notice ?: @"";
+    self.deliveryPanel.hidden = !notice.length;
 }
 
 - (void)changeHost:(NSPopUpButton *)picker {

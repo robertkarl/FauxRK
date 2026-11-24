@@ -4,6 +4,7 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol RKSidebarDelegate <NSObject>
 - (void)selectHost:(NSString *)hostID;
 - (void)retryConnection;
+- (void)dismissDeliveryNotice;
 - (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt;
 - (void)sortPanesByActivity;
 - (void)capturePane:(NSString *)paneID;
@@ -24,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)showDisconnectedLastSeen:(nullable NSDate *)date;
 - (void)revealAttention;
 - (void)showStatus:(NSString *)message;
+- (void)showDeliveryNotice:(NSString *)notice;
 - (void)showPreview:(NSString *)text forPane:(NSString *)paneID;
 - (void)revealPane:(NSString *)paneID;
 - (void)showSpawn;

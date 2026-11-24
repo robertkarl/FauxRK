@@ -25,11 +25,12 @@ static NSDictionary *Pane(NSInteger number) {
 
 @interface Actions : NSObject <RKSidebarDelegate>
 @property (nonatomic) NSString *launched, *steered, *captured, *selectedHost, *directory;
-@property (nonatomic) NSUInteger retries, ends;
+@property (nonatomic) NSUInteger retries, ends, dismissals;
 @end
 @implementation Actions
 - (void)selectHost:(NSString *)hostID { self.selectedHost = hostID; }
 - (void)retryConnection { self.retries++; }
+- (void)dismissDeliveryNotice { self.dismissals++; }
 - (void)spawnPreset:(NSString *)preset directory:(NSString *)directory prompt:(NSString *)prompt { self.launched = prompt; self.directory = directory; }
 - (void)steerPane:(NSString *)paneID text:(NSString *)text { self.steered = text; }
 - (void)capturePane:(NSString *)paneID { self.captured = paneID; }
@@ -124,6 +125,11 @@ static void VerifyHostSwitching(RKSidebar *sidebar, Actions *actions) {
     NSButton *send = (NSButton *)Find(remote, @"card-send-steer-%0");
     NSButton *capture = (NSButton *)Find(remote, @"capture-%1");
     [sidebar showDisconnectedLastSeen:NSDate.date];
+    NSString *uncertain = @"Delivery unconfirmed. Check the agent before resending.";
+    [sidebar showDeliveryNotice:uncertain];
+    [sidebar showStatus:@"Listening…"];
+    NSTextField *notice = (NSTextField *)Find(remote, @"delivery-notice");
+    Check([notice.stringValue isEqual:uncertain] && !notice.hiddenOrHasHiddenAncestor, @"Offline notice survives unrelated dictation status");
     NSString *badge = [Find(remote, @"host-status") accessibilityValue];
     Check([badge isEqual:@"Disconnected"] && [[(NSTextField *)Find(remote, @"host-last-seen") stringValue] containsString:@"Last seen"], @"Show last-known time while disconnected");
     [remote layoutSubtreeIfNeeded];
@@ -139,6 +145,13 @@ static void VerifyHostSwitching(RKSidebar *sidebar, Actions *actions) {
 
     [sidebar displayPanes:panes attention:requests];
     Check(send.enabled && capture.enabled && launch.enabled, @"A fresh snapshot restores host actions");
+    [sidebar showStatus:@"Draft inserted."];
+    Check([notice.stringValue isEqual:uncertain] && !notice.hiddenOrHasHiddenAncestor, @"Reconnect preserves unconfirmed delivery");
+    [(NSButton *)Find(remote, @"dismiss-delivery-notice") performClick:nil];
+    Check(actions.dismissals == 1, @"Dismiss button requests controller acknowledgement");
+    [sidebar showDeliveryNotice:@""];
+    Check(notice.hiddenOrHasHiddenAncestor && [[(NSTextField *)Find(remote, @"transient-status") stringValue] isEqual:@"Draft inserted."], @"Clearing delivery notice preserves unrelated status");
+    [sidebar showDeliveryNotice:uncertain];
     Check(Find(remote, @"steer-%0") == steer && [steer.string hasPrefix:@"Keep this"], @"Reconnect preserves pane draft");
     Check([draft.string isEqual:@"Keep remote launch draft."], @"Reconnect preserves spawn draft");
     NSView *oldAttention = Find(remote, @"attention-open-handoff");
@@ -156,6 +169,8 @@ static void VerifyHostSwitching(RKSidebar *sidebar, Actions *actions) {
     [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.05]];
     [sidebar displayPanes:panes attention:requests];
     Check(!sidebar.window.sheets.count && actions.ends == 0, @"Switch cancels host-bound confirmation");
+    NSTextField *freshNotice = (NSTextField *)Find(sidebar.window.contentView, @"delivery-notice");
+    Check(!freshNotice || freshNotice.hiddenOrHasHiddenAncestor, @"Host switch clears the previous host’s notice");
     [sidebar showSpawn];
     projects = (NSPopUpButton *)Find(sidebar.window.contentView, @"spawn-directory");
     Check([projects.itemTitles containsObject:@"Choose another folder…"], @"This Mac keeps local folder selection");
