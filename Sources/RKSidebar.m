@@ -326,6 +326,11 @@
     [self scrollTo:self.preview];
 }
 
+- (void)showSpawnInProject:(NSString *)directory {
+    [self.launcher chooseProject:directory];
+    [self showSpawn];
+}
+
 - (void)showSpawn {
     self.launcher.hidden = NO;
     [self scrollTo:self.launcher];

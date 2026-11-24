@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)showPreview:(NSString *)text forPane:(NSString *)paneID;
 - (void)revealPane:(NSString *)paneID;
 - (void)showSpawn;
+- (void)showSpawnInProject:(NSString *)directory;
 // Acknowledge successful submission without erasing edits made while it was pending.
 - (void)didSendText:(NSString *)text forPane:(NSString *)paneID;
 - (void)didSpawnWithPrompt:(NSString *)prompt;

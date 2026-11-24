@@ -40,6 +40,11 @@
     [self installMenus];
     [self.sidebar showWindow:nil];
     [NSApp activateIgnoringOtherApps:YES];
+    NSString *project = [NSUserDefaults.standardUserDefaults volatileDomainForName:NSArgumentDomain][@"RKProject"];
+    BOOL isDirectory = NO;
+    if (project.isAbsolutePath && [NSFileManager.defaultManager fileExistsAtPath:project isDirectory:&isDirectory] && isDirectory) {
+        [self.sidebar showSpawnInProject:project];
+    }
     self.keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent *(NSEvent *e) {
         return [weakSelf handleDictationKey:e];
     }];

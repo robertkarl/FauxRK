@@ -61,10 +61,15 @@
     picker.directoryURL = [NSURL fileURLWithPath:self.chosenPath.stringByExpandingTildeInPath];
     [picker beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
         if (response != NSModalResponseOK) return;
-        self.chosenPath = picker.URL.path.stringByAbbreviatingWithTildeInPath;
-        if (![sender itemWithTitle:self.chosenPath]) [sender insertItemWithTitle:self.chosenPath atIndex:sender.numberOfItems - 1];
-        [sender selectItemWithTitle:self.chosenPath];
+        [self chooseProject:picker.URL.path];
     }];
+}
+- (void)chooseProject:(NSString *)directory {
+    self.chosenPath = directory.stringByAbbreviatingWithTildeInPath;
+    if (![self.directories itemWithTitle:self.chosenPath]) {
+        [self.directories insertItemWithTitle:self.chosenPath atIndex:self.directories.numberOfItems - 1];
+    }
+    [self.directories selectItemWithTitle:self.chosenPath];
 }
 - (void)acknowledgePrompt:(NSString *)prompt {
     if (![self.prompt.editor.string isEqual:prompt]) return;
